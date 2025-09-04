@@ -1,0 +1,28 @@
+object pascubeform: Tpascubeform
+  Left = 250
+  Height = 600
+  Top = 150
+  Width = 802
+  Caption = 'pasCube'
+  ClientHeight = 600
+  ClientWidth = 802
+  LCLVersion = '4.2.0.0'
+  OnCreate = FormCreate
+  OnDestroy = FormDestroy
+  object pascubeOpenGLControl: TOpenGLControl
+    Left = 0
+    Height = 600
+    Top = 0
+    Width = 802
+    Align = alClient
+    AutoResizeViewport = True
+    OnPaint = pascubeOpenGLControlPaint
+    OnResize = pascubeOpenGLControlResize
+  end
+  object Timer1: TTimer
+    Interval = 16
+    OnTimer = Timer1Timer
+    Left = 32
+    Top = 32
+  end
+end
