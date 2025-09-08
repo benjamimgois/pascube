@@ -89,9 +89,9 @@ begin
   FShowReflection := True;
 
   // Posição inicial da câmera
-  FCameraX := 5.0;
-  FCameraY := 2.0;
-  FCameraZ := 3.0;
+  FCameraX := -4.2;
+  FCameraY := -1.2;
+  FCameraZ := -2.0;
 
   // Criar controles da interface
   CreateControls;
@@ -103,7 +103,7 @@ begin
   // AutoResizeViewport ligado
   pascubeOpenGLControl.AutoResizeViewport := True;
 
-  // 60 FPS
+  // 240 FPS
   Timer1.Interval := 4;
   Timer1.Enabled := True;
 end;
