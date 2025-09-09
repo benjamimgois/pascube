@@ -2,10 +2,10 @@ object pascubeform: Tpascubeform
   Left = 250
   Height = 550
   Top = 150
-  Width = 757
+  Width = 758
   Caption = 'pasCube 1.4.2 git'
   ClientHeight = 550
-  ClientWidth = 757
+  ClientWidth = 758
   LCLVersion = '4.2.0.0'
   OnCreate = FormCreate
   OnDestroy = FormDestroy
@@ -13,7 +13,7 @@ object pascubeform: Tpascubeform
     Left = 0
     Height = 550
     Top = 0
-    Width = 757
+    Width = 758
     Align = alClient
     AutoResizeViewport = True
     OnPaint = pascubeOpenGLControlPaint

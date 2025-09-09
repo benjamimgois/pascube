@@ -20,17 +20,22 @@ type
     TrackBarCamY: TTrackBar;
     TrackBarCamZ: TTrackBar;
 
-    // Labels para mostrar valores
+    // Labels
     LabelCamX: TLabel;
     LabelCamY: TLabel;
     LabelCamZ: TLabel;
     LabelValueX: TLabel;
     LabelValueY: TLabel;
     LabelValueZ: TLabel;
+    LabelMaterial: TLabel;
 
-    // CheckBox para auto-rotação
+    // ComboBox para material
+    ComboBoxMaterial: TComboBox;
+
+    // CheckBoxes
     CheckBoxAutoRotate: TCheckBox;
     CheckBoxReflection: TCheckBox;
+    CheckBoxAutoMaterial: TCheckBox;
 
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
@@ -41,6 +46,8 @@ type
     procedure TrackBarCamChange(Sender: TObject);
     procedure CheckBoxAutoRotateChange(Sender: TObject);
     procedure CheckBoxReflectionChange(Sender: TObject);
+    procedure CheckBoxAutoMaterialChange(Sender: TObject);
+    procedure ComboBoxMaterialChange(Sender: TObject);
   private
     FRotationX: GLfloat;
     FRotationY: GLfloat;
@@ -52,6 +59,9 @@ type
     FCameraZ: GLfloat;
     FAutoRotate: Boolean;
     FShowReflection: Boolean;
+    FAutoMaterial: Boolean;
+    FCurrentMaterial: Integer;
+    FMaterialTimer: Integer;
     FSkyboxTexture: GLuint;
     FEnvMapTexture: GLuint;
     procedure InitializeGL;
@@ -84,14 +94,17 @@ begin
   FRotationY := 45;
   FRotationZ := 0;
   FInitialized := False;
-  FLightAngle := 30; //0
+  FLightAngle := 0;
   FAutoRotate := True;
   FShowReflection := True;
+  FAutoMaterial := False;
+  FCurrentMaterial := 3; // Começa com Cromo
+  FMaterialTimer := 0;
 
   // Posição inicial da câmera
-  FCameraX := -4.2;
-  FCameraY := -1.2;
-  FCameraZ := -2.0;
+  FCameraX := -4.5;   //5
+  FCameraY := -1.5;   //3
+  FCameraZ := -2.5;   //5
 
   // Criar controles da interface
   CreateControls;
@@ -114,7 +127,7 @@ begin
   PanelControls := TPanel.Create(Self);
   PanelControls.Parent := Self;
   PanelControls.Align := alRight;
-  PanelControls.Width := 200;
+  PanelControls.Width := 250;
   PanelControls.Caption := '';
   PanelControls.BevelOuter := bvLowered;
 
@@ -123,11 +136,11 @@ begin
   LabelCamX.Parent := PanelControls;
   LabelCamX.Left := 10;
   LabelCamX.Top := 10;
-  LabelCamX.Caption := 'Câmera X:';
+  LabelCamX.Caption := 'Camera X:';
 
   LabelValueX := TLabel.Create(Self);
   LabelValueX.Parent := PanelControls;
-  LabelValueX.Left := 150;
+  LabelValueX.Left := 200;
   LabelValueX.Top := 10;
   LabelValueX.Caption := '5.0';
 
@@ -135,7 +148,7 @@ begin
   TrackBarCamX.Parent := PanelControls;
   TrackBarCamX.Left := 10;
   TrackBarCamX.Top := 30;
-  TrackBarCamX.Width := 180;
+  TrackBarCamX.Width := 230;
   TrackBarCamX.Min := -100;
   TrackBarCamX.Max := 100;
   TrackBarCamX.Position := 50;
@@ -148,11 +161,11 @@ begin
   LabelCamY.Parent := PanelControls;
   LabelCamY.Left := 10;
   LabelCamY.Top := 70;
-  LabelCamY.Caption := 'Câmera Y:';
+  LabelCamY.Caption := 'Camera Y:';
 
   LabelValueY := TLabel.Create(Self);
   LabelValueY.Parent := PanelControls;
-  LabelValueY.Left := 150;
+  LabelValueY.Left := 200;
   LabelValueY.Top := 70;
   LabelValueY.Caption := '3.0';
 
@@ -160,7 +173,7 @@ begin
   TrackBarCamY.Parent := PanelControls;
   TrackBarCamY.Left := 10;
   TrackBarCamY.Top := 90;
-  TrackBarCamY.Width := 180;
+  TrackBarCamY.Width := 230;
   TrackBarCamY.Min := -100;
   TrackBarCamY.Max := 100;
   TrackBarCamY.Position := 30;
@@ -173,11 +186,11 @@ begin
   LabelCamZ.Parent := PanelControls;
   LabelCamZ.Left := 10;
   LabelCamZ.Top := 130;
-  LabelCamZ.Caption := 'Câmera Z:';
+  LabelCamZ.Caption := 'Camera Z:';
 
   LabelValueZ := TLabel.Create(Self);
   LabelValueZ.Parent := PanelControls;
-  LabelValueZ.Left := 150;
+  LabelValueZ.Left := 200;
   LabelValueZ.Top := 130;
   LabelValueZ.Caption := '5.0';
 
@@ -185,7 +198,7 @@ begin
   TrackBarCamZ.Parent := PanelControls;
   TrackBarCamZ.Left := 10;
   TrackBarCamZ.Top := 150;
-  TrackBarCamZ.Width := 180;
+  TrackBarCamZ.Width := 230;
   TrackBarCamZ.Min := -100;
   TrackBarCamZ.Max := 100;
   TrackBarCamZ.Position := 50;
@@ -193,12 +206,39 @@ begin
   TrackBarCamZ.TickStyle := tsNone;
   TrackBarCamZ.OnChange := @TrackBarCamChange;
 
+  // --- ComboBox para Material ---
+  LabelMaterial := TLabel.Create(Self);
+  LabelMaterial.Parent := PanelControls;
+  LabelMaterial.Left := 10;
+  LabelMaterial.Top := 200;
+  LabelMaterial.Caption := 'Material:';
+  LabelMaterial.Font.Style := [fsBold];
+
+  ComboBoxMaterial := TComboBox.Create(Self);
+  ComboBoxMaterial.Parent := PanelControls;
+  ComboBoxMaterial.Left := 10;
+  ComboBoxMaterial.Top := 220;
+  ComboBoxMaterial.Width := 230;
+  ComboBoxMaterial.Style := csDropDownList;
+  ComboBoxMaterial.Items.Clear;
+  ComboBoxMaterial.Items.Add('Polished Steel');
+  ComboBoxMaterial.Items.Add('Gold');
+  ComboBoxMaterial.Items.Add('Copper');
+  ComboBoxMaterial.Items.Add('Chrome');
+  ComboBoxMaterial.Items.Add('Silver');
+  ComboBoxMaterial.Items.Add('Bronze');
+  ComboBoxMaterial.Items.Add('Brass');
+  ComboBoxMaterial.Items.Add('Platinum');
+  ComboBoxMaterial.ItemIndex := 3; // Cromo
+  ComboBoxMaterial.OnChange := @ComboBoxMaterialChange;
+
   // --- CheckBox para auto-rotação ---
   CheckBoxAutoRotate := TCheckBox.Create(Self);
   CheckBoxAutoRotate.Parent := PanelControls;
   CheckBoxAutoRotate.Left := 10;
-  CheckBoxAutoRotate.Top := 200;
-  CheckBoxAutoRotate.Caption := 'Rotação Automática';
+  CheckBoxAutoRotate.Top := 260;
+  CheckBoxAutoRotate.Width := 230;
+  CheckBoxAutoRotate.Caption := 'Auto Rotation';
   CheckBoxAutoRotate.Checked := True;
   CheckBoxAutoRotate.OnChange := @CheckBoxAutoRotateChange;
 
@@ -206,10 +246,21 @@ begin
   CheckBoxReflection := TCheckBox.Create(Self);
   CheckBoxReflection.Parent := PanelControls;
   CheckBoxReflection.Left := 10;
-  CheckBoxReflection.Top := 225;
-  CheckBoxReflection.Caption := 'Reflexão de Ambiente';
+  CheckBoxReflection.Top := 285;
+  CheckBoxReflection.Width := 230;
+  CheckBoxReflection.Caption := 'Environment Reflection';
   CheckBoxReflection.Checked := True;
   CheckBoxReflection.OnChange := @CheckBoxReflectionChange;
+
+  // --- CheckBox para troca automática de material ---
+  CheckBoxAutoMaterial := TCheckBox.Create(Self);
+  CheckBoxAutoMaterial.Parent := PanelControls;
+  CheckBoxAutoMaterial.Left := 10;
+  CheckBoxAutoMaterial.Top := 310;
+  CheckBoxAutoMaterial.Width := 230;
+  CheckBoxAutoMaterial.Caption := 'Auto Material Change';
+  CheckBoxAutoMaterial.Checked := True;
+  CheckBoxAutoMaterial.OnChange := @CheckBoxAutoMaterialChange;
 
   // Ajustar o OpenGL Control
   pascubeOpenGLControl.Align := alClient;
@@ -227,15 +278,12 @@ begin
   begin
     for x := 0 to 255 do
     begin
-      // Criar gradiente vertical de azul escuro para azul claro
       factor := y / 255.0;
 
-      // Céu: de azul escuro (topo) para azul claro com toque de laranja (horizonte)
-      r := Round(50 + factor * 150);  // De 50 a 200
-      g := Round(80 + factor * 120);  // De 80 a 200
-      b := Round(180 - factor * 50);  // De 180 a 130
+      r := Round(50 + factor * 150);
+      g := Round(80 + factor * 120);
+      b := Round(180 - factor * 50);
 
-      // Adicionar algumas "nuvens" usando ruído simples
       if (Sin(x * 0.05) * Cos(y * 0.03) > 0.5) then
       begin
         r := Min(255, r + 30);
@@ -249,24 +297,19 @@ begin
     end;
   end;
 
-  // Criar textura OpenGL
   glGenTextures(1, @FSkyboxTexture);
   glBindTexture(GL_TEXTURE_2D, FSkyboxTexture);
 
-  // Configurar parâmetros
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-  // Enviar dados para GPU
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 512, 512, 0, GL_RGB, GL_UNSIGNED_BYTE, @TextureData);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 256, 256, 0, GL_RGB, GL_UNSIGNED_BYTE, @TextureData);
 end;
 
 procedure Tpascubeform.CreateEnvironmentMap;
 begin
-  // Por simplicidade, usar a mesma textura do skybox como environment map
-  // Em uma implementação mais avançada, você criaria um cubemap real
   FEnvMapTexture := FSkyboxTexture;
 end;
 
@@ -321,7 +364,7 @@ begin
                    0, GL_RGB, GL_UNSIGNED_BYTE, @Data[0]);
 
     except
-      // Silencioso em caso de erro
+      // Silencioso
     end;
   finally
     Bitmap.Free;
@@ -348,6 +391,33 @@ procedure Tpascubeform.CheckBoxReflectionChange(Sender: TObject);
 begin
   FShowReflection := CheckBoxReflection.Checked;
   pascubeOpenGLControl.Invalidate;
+end;
+
+procedure Tpascubeform.ComboBoxMaterialChange(Sender: TObject);
+begin
+  if ComboBoxMaterial <> nil then
+  begin
+    FCurrentMaterial := ComboBoxMaterial.ItemIndex;
+    pascubeOpenGLControl.Invalidate;
+  end;
+end;
+
+procedure Tpascubeform.CheckBoxAutoMaterialChange(Sender: TObject);
+begin
+  if CheckBoxAutoMaterial <> nil then
+  begin
+    FAutoMaterial := CheckBoxAutoMaterial.Checked;
+    if ComboBoxMaterial <> nil then
+    begin
+      if not FAutoMaterial then
+      begin
+        ComboBoxMaterial.ItemIndex := FCurrentMaterial;
+        ComboBoxMaterial.Enabled := True;
+      end
+      else
+        ComboBoxMaterial.Enabled := False;
+    end;
+  end;
 end;
 
 procedure Tpascubeform.UpdateCameraLabels;
@@ -407,7 +477,6 @@ begin
 
   SetupLighting;
 
-  // Tentar carregar textura de skybox ou gerar procedural
   SkyboxFile := ExtractFilePath(Application.ExeName) + 'skybox.jpg';
   if not FileExists(SkyboxFile) then
     SkyboxFile := ExtractFilePath(Application.ExeName) + 'skybox.png';
@@ -415,7 +484,7 @@ begin
   if FileExists(SkyboxFile) then
     FSkyboxTexture := LoadTexture(SkyboxFile)
   else
-    GenerateProceduralSkybox;  // Gerar textura procedural se não encontrar arquivo
+    GenerateProceduralSkybox;
 
   CreateEnvironmentMap;
 
@@ -518,7 +587,7 @@ begin
       MaterialShininess := 75.0;
     end;
 
-    6: // Latão (Brass)
+    6: // Latão
     begin
       MaterialAmbient[0] := 0.329412; MaterialAmbient[1] := 0.223529; MaterialAmbient[2] := 0.027451; MaterialAmbient[3] := 1.0;
       MaterialDiffuse[0] := 0.780392; MaterialDiffuse[1] := 0.568627; MaterialDiffuse[2] := 0.113725; MaterialDiffuse[3] := 1.0;
@@ -543,7 +612,7 @@ begin
     end;
   end;
 
-  glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, @MaterialAmbient);
+ glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, @MaterialAmbient);
   glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, @MaterialDiffuse);
   glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, @MaterialSpecular);
   glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, MaterialShininess);
@@ -575,23 +644,18 @@ end;
 
 procedure Tpascubeform.DrawSkybox;
 const
-  SIZE = 50.0;  // Tamanho grande para envolver toda a cena
+  SIZE = 50.0;
 begin
-  // Desabilitar iluminação para o skybox
   glDisable(GL_LIGHTING);
   glDisable(GL_DEPTH_TEST);
 
-  // Habilitar textura
   glEnable(GL_TEXTURE_2D);
   glBindTexture(GL_TEXTURE_2D, FSkyboxTexture);
   glColor3f(1.0, 1.0, 1.0);
 
   glPushMatrix;
-
-  // O skybox deve se mover com a câmera (mas não rotacionar)
   glTranslatef(FCameraX, FCameraY, FCameraZ);
 
-  // Desenhar as 6 faces do skybox
   // Face traseira
   glBegin(GL_QUADS);
     glTexCoord2f(0.0, 0.0); glVertex3f(-SIZE, -SIZE, -SIZE);
@@ -650,29 +714,22 @@ end;
 procedure Tpascubeform.DrawMetallicCube;
 const
   SIZE = 1.0;
-var
-  Normal: array[0..2] of GLfloat;
-  i: Integer;
 begin
-  SetMetallicMaterial(4);
+  SetMetallicMaterial(FCurrentMaterial);
 
-  // Se reflexão está habilitada, simular com mapeamento de ambiente
   if FShowReflection and (FEnvMapTexture > 0) then
   begin
     glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, FEnvMapTexture);
 
-    // Configurar geração automática de coordenadas de textura para reflexão
     glTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP);
     glTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP);
     glEnable(GL_TEXTURE_GEN_S);
     glEnable(GL_TEXTURE_GEN_T);
 
-    // Misturar textura com material
     glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
   end;
 
-  // Desenhar faces do cubo
   glBegin(GL_QUADS);
     // Face frontal
     glNormal3f(0.0, 0.0, 1.0);
@@ -717,7 +774,6 @@ begin
     glVertex3f(-SIZE, -SIZE, -SIZE);
   glEnd;
 
-  // Desabilitar mapeamento de ambiente se estava ativo
   if FShowReflection and (FEnvMapTexture > 0) then
   begin
     glDisable(GL_TEXTURE_GEN_S);
@@ -725,7 +781,7 @@ begin
     glDisable(GL_TEXTURE_2D);
   end;
 
-  // Adicionar bordas sutis
+  // Bordas sutis
   glDisable(GL_LIGHTING);
   glColor3f(0.9, 0.9, 0.9);
   glLineWidth(0.5);
@@ -767,10 +823,8 @@ begin
 
   glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT);
 
-  // Desenhar skybox primeiro (fundo)
   DrawSkybox;
 
-  // Configurar câmera
   glLoadIdentity;
   gluLookAt(FCameraX, FCameraY, FCameraZ,
             0.0, 0.0, 0.0,
@@ -778,13 +832,11 @@ begin
 
   UpdateLighting;
 
-  // Aplicar rotações ao cubo
   glPushMatrix;
   glRotatef(FRotationX, 1.0, 0.0, 0.0);
   glRotatef(FRotationY, 0.0, 1.0, 0.0);
   glRotatef(FRotationZ, 0.0, 0.0, 1.0);
 
-  // Desenhar o cubo metálico com reflexões
   DrawMetallicCube;
 
   glPopMatrix;
@@ -809,6 +861,21 @@ begin
 
   FLightAngle := FLightAngle + 1.5;
   if FLightAngle > 360 then FLightAngle := FLightAngle - 360;
+
+  if FAutoMaterial then
+  begin
+    Inc(FMaterialTimer);
+    if FMaterialTimer >= 120 then
+    begin
+      FMaterialTimer := 0;
+      Inc(FCurrentMaterial);
+      if FCurrentMaterial > 7 then
+        FCurrentMaterial := 0;
+
+      if ComboBoxMaterial <> nil then
+        ComboBoxMaterial.ItemIndex := FCurrentMaterial;
+    end;
+  end;
 
   if FRotationX > 360 then FRotationX := FRotationX - 360;
   if FRotationY > 360 then FRotationY := FRotationY - 360;
