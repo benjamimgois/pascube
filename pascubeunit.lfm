@@ -3,7 +3,7 @@ object pascubeform: Tpascubeform
   Height = 550
   Top = 150
   Width = 758
-  Caption = 'pasCube 1.4.2 git'
+  Caption = 'pasCube 1.5 (beta)'
   ClientHeight = 550
   ClientWidth = 758
   LCLVersion = '4.2.0.0'

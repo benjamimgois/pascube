@@ -6,7 +6,7 @@ interface
 
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, ExtCtrls, ComCtrls,
-  StdCtrls, OpenGLContext, GL, GLU, GLExt, Math, LCLType;
+  StdCtrls, OpenGLContext, GL, GLU, GLExt, Math, LCLType, FileUtil;
 
 type
   { Tpascubeform }
@@ -15,7 +15,7 @@ type
     Timer1: TTimer;
     PanelControls: TPanel;
 
-    // TrackBars para posição da câmera
+    // TrackBars for camera position
     TrackBarCamX: TTrackBar;
     TrackBarCamY: TTrackBar;
     TrackBarCamZ: TTrackBar;
@@ -29,7 +29,7 @@ type
     LabelValueZ: TLabel;
     LabelMaterial: TLabel;
 
-    // ComboBox para material
+    // ComboBox for material
     ComboBoxMaterial: TComboBox;
 
     // CheckBoxes
@@ -64,6 +64,7 @@ type
     FMaterialTimer: Integer;
     FSkyboxTexture: GLuint;
     FEnvMapTexture: GLuint;
+    FConfigDir: string;
     procedure InitializeGL;
     procedure ApplyViewportAndProjection;
     procedure DrawMetallicCube;
@@ -76,6 +77,8 @@ type
     function LoadTexture(const FileName: string): GLuint;
     procedure CreateEnvironmentMap;
     procedure GenerateProceduralSkybox;
+    function GetUserConfigDir: string;
+    procedure SetupConfigDirectory;
   public
   end;
 
@@ -88,6 +91,42 @@ implementation
 
 { Tpascubeform }
 
+// Function to get user config directory
+function Tpascubeform.GetUserConfigDir: string;
+var
+  UserConfig: string;
+begin
+  UserConfig := GetEnvironmentVariable('XDG_CONFIG_HOME');
+  if not DirectoryExists(UserConfig) then
+  begin
+    UserConfig := GetUserDir + '.config';
+  end;
+  Result := UserConfig;
+end;
+
+procedure Tpascubeform.SetupConfigDirectory;
+var
+  ConfigPath: string;
+begin
+  // Get base config directory
+  ConfigPath := GetUserConfigDir;
+
+  // Create .config directory if it doesn't exist
+  if not DirectoryExists(ConfigPath) then
+    ForceDirectories(ConfigPath);
+
+  // Create pascube subdirectory
+  FConfigDir := IncludeTrailingPathDelimiter(ConfigPath) + 'pascube';
+  if not DirectoryExists(FConfigDir) then
+  begin
+    ForceDirectories(FConfigDir);
+   // ShowMessage('Created config directory: ' + FConfigDir);
+  end;
+
+  // Ensure trailing path delimiter
+  FConfigDir := IncludeTrailingPathDelimiter(FConfigDir);
+end;
+
 procedure Tpascubeform.FormCreate(Sender: TObject);
 begin
   FRotationX := 30;
@@ -97,33 +136,36 @@ begin
   FLightAngle := 0;
   FAutoRotate := True;
   FShowReflection := True;
-  FAutoMaterial := False;
-  FCurrentMaterial := 3; // Começa com Cromo
+  FAutoMaterial := true;
+  FCurrentMaterial := 3; // Start with Chrome
   FMaterialTimer := 0;
 
-  // Posição inicial da câmera
-  FCameraX := -4.5;   //5
-  FCameraY := -1.5;   //3
-  FCameraZ := -2.5;   //5
+  // Initial camera position
+  FCameraX := 5.0;
+  FCameraY := 3.0;
+  FCameraZ := 4.5;
 
-  // Criar controles da interface
+  // Setup config directory first
+  SetupConfigDirectory;
+
+  // Create interface controls
   CreateControls;
 
-  // Configurar bits de profundidade
+  // Configure depth bits
   pascubeOpenGLControl.DepthBits := 24;
   pascubeOpenGLControl.StencilBits := 8;
 
-  // AutoResizeViewport ligado
+  // AutoResizeViewport enabled
   pascubeOpenGLControl.AutoResizeViewport := True;
 
-  // 240 FPS
-  Timer1.Interval := 4;
+  // 60 FPS
+  Timer1.Interval := 16;
   Timer1.Enabled := True;
 end;
 
 procedure Tpascubeform.CreateControls;
 begin
-  // Criar painel para controles
+  // Create controls panel
   PanelControls := TPanel.Create(Self);
   PanelControls.Parent := Self;
   PanelControls.Align := alRight;
@@ -131,7 +173,7 @@ begin
   PanelControls.Caption := '';
   PanelControls.BevelOuter := bvLowered;
 
-  // --- Controle Camera X ---
+  // --- Camera X Control ---
   LabelCamX := TLabel.Create(Self);
   LabelCamX.Parent := PanelControls;
   LabelCamX.Left := 10;
@@ -156,7 +198,7 @@ begin
   TrackBarCamX.TickStyle := tsNone;
   TrackBarCamX.OnChange := @TrackBarCamChange;
 
-  // --- Controle Camera Y ---
+  // --- Camera Y Control ---
   LabelCamY := TLabel.Create(Self);
   LabelCamY.Parent := PanelControls;
   LabelCamY.Left := 10;
@@ -181,7 +223,7 @@ begin
   TrackBarCamY.TickStyle := tsNone;
   TrackBarCamY.OnChange := @TrackBarCamChange;
 
-  // --- Controle Camera Z ---
+  // --- Camera Z Control ---
   LabelCamZ := TLabel.Create(Self);
   LabelCamZ.Parent := PanelControls;
   LabelCamZ.Left := 10;
@@ -206,7 +248,7 @@ begin
   TrackBarCamZ.TickStyle := tsNone;
   TrackBarCamZ.OnChange := @TrackBarCamChange;
 
-  // --- ComboBox para Material ---
+  // --- Material ComboBox ---
   LabelMaterial := TLabel.Create(Self);
   LabelMaterial.Parent := PanelControls;
   LabelMaterial.Left := 10;
@@ -229,10 +271,10 @@ begin
   ComboBoxMaterial.Items.Add('Bronze');
   ComboBoxMaterial.Items.Add('Brass');
   ComboBoxMaterial.Items.Add('Platinum');
-  ComboBoxMaterial.ItemIndex := 3; // Cromo
+  ComboBoxMaterial.ItemIndex := 3; // Chrome
   ComboBoxMaterial.OnChange := @ComboBoxMaterialChange;
 
-  // --- CheckBox para auto-rotação ---
+  // --- Auto-rotation CheckBox ---
   CheckBoxAutoRotate := TCheckBox.Create(Self);
   CheckBoxAutoRotate.Parent := PanelControls;
   CheckBoxAutoRotate.Left := 10;
@@ -242,7 +284,7 @@ begin
   CheckBoxAutoRotate.Checked := True;
   CheckBoxAutoRotate.OnChange := @CheckBoxAutoRotateChange;
 
-  // --- CheckBox para reflexão ---
+  // --- Reflection CheckBox ---
   CheckBoxReflection := TCheckBox.Create(Self);
   CheckBoxReflection.Parent := PanelControls;
   CheckBoxReflection.Left := 10;
@@ -252,17 +294,17 @@ begin
   CheckBoxReflection.Checked := True;
   CheckBoxReflection.OnChange := @CheckBoxReflectionChange;
 
-  // --- CheckBox para troca automática de material ---
+  // --- Auto material change CheckBox ---
   CheckBoxAutoMaterial := TCheckBox.Create(Self);
   CheckBoxAutoMaterial.Parent := PanelControls;
   CheckBoxAutoMaterial.Left := 10;
   CheckBoxAutoMaterial.Top := 310;
   CheckBoxAutoMaterial.Width := 230;
   CheckBoxAutoMaterial.Caption := 'Auto Material Change';
-  CheckBoxAutoMaterial.Checked := True;
+  CheckBoxAutoMaterial.Checked := true;
   CheckBoxAutoMaterial.OnChange := @CheckBoxAutoMaterialChange;
 
-  // Ajustar o OpenGL Control
+  // Adjust OpenGL Control
   pascubeOpenGLControl.Align := alClient;
 end;
 
@@ -273,7 +315,7 @@ var
   r, g, b: Byte;
   factor: Single;
 begin
-  // Gerar gradiente de céu procedural
+  // Generate procedural sky gradient
   for y := 0 to 255 do
   begin
     for x := 0 to 255 do
@@ -364,7 +406,7 @@ begin
                    0, GL_RGB, GL_UNSIGNED_BYTE, @Data[0]);
 
     except
-      // Silencioso
+      // Silent
     end;
   finally
     Bitmap.Free;
@@ -477,14 +519,31 @@ begin
 
   SetupLighting;
 
-  SkyboxFile := ExtractFilePath(Application.ExeName) + 'skybox.jpg';
+  // First, look for skybox in user config directory
+  SkyboxFile := FConfigDir + 'skybox.png';
   if not FileExists(SkyboxFile) then
+    SkyboxFile := FConfigDir + 'skybox.jpg';
+  if not FileExists(SkyboxFile) then
+    SkyboxFile := FConfigDir + 'skybox.bmp';
+
+  // If not found in config dir, check application directory (fallback)
+  if not FileExists(SkyboxFile) then
+  begin
     SkyboxFile := ExtractFilePath(Application.ExeName) + 'skybox.png';
+    if not FileExists(SkyboxFile) then
+      SkyboxFile := ExtractFilePath(Application.ExeName) + 'skybox.jpg';
+  end;
 
   if FileExists(SkyboxFile) then
-    FSkyboxTexture := LoadTexture(SkyboxFile)
+  begin
+    FSkyboxTexture := LoadTexture(SkyboxFile);
+   // ShowMessage('Loaded skybox from: ' + SkyboxFile);
+  end
   else
+  begin
     GenerateProceduralSkybox;
+   // ShowMessage('Using procedural skybox. You can place a skybox.png file in: ' + FConfigDir);
+  end;
 
   CreateEnvironmentMap;
 
@@ -539,7 +598,7 @@ var
   MaterialShininess: GLfloat;
 begin
   case MetalType of
-    0: // Aço polido
+    0: // Polished Steel
     begin
       MaterialAmbient[0] := 0.25; MaterialAmbient[1] := 0.25; MaterialAmbient[2] := 0.25; MaterialAmbient[3] := 1.0;
       MaterialDiffuse[0] := 0.4;  MaterialDiffuse[1] := 0.4;  MaterialDiffuse[2] := 0.4;  MaterialDiffuse[3] := 1.0;
@@ -547,7 +606,7 @@ begin
       MaterialShininess := 100.0;
     end;
 
-    1: // Ouro
+    1: // Gold
     begin
       MaterialAmbient[0] := 0.24725; MaterialAmbient[1] := 0.1995; MaterialAmbient[2] := 0.0745; MaterialAmbient[3] := 1.0;
       MaterialDiffuse[0] := 0.75164; MaterialDiffuse[1] := 0.60648; MaterialDiffuse[2] := 0.22648; MaterialDiffuse[3] := 1.0;
@@ -555,7 +614,7 @@ begin
       MaterialShininess := 80.0;
     end;
 
-    2: // Cobre
+    2: // Copper
     begin
       MaterialAmbient[0] := 0.19125; MaterialAmbient[1] := 0.0735; MaterialAmbient[2] := 0.0225; MaterialAmbient[3] := 1.0;
       MaterialDiffuse[0] := 0.7038;  MaterialDiffuse[1] := 0.27048; MaterialDiffuse[2] := 0.0828; MaterialDiffuse[3] := 1.0;
@@ -563,7 +622,7 @@ begin
       MaterialShininess := 90.0;
     end;
 
-    3: // Cromo
+    3: // Chrome
     begin
       MaterialAmbient[0] := 0.25; MaterialAmbient[1] := 0.25; MaterialAmbient[2] := 0.25; MaterialAmbient[3] := 1.0;
       MaterialDiffuse[0] := 0.4;  MaterialDiffuse[1] := 0.4;  MaterialDiffuse[2] := 0.4;  MaterialDiffuse[3] := 1.0;
@@ -571,7 +630,7 @@ begin
       MaterialShininess := 128.0;
     end;
 
-    4: // Prata
+    4: // Silver
     begin
       MaterialAmbient[0] := 0.19225; MaterialAmbient[1] := 0.19225; MaterialAmbient[2] := 0.19225; MaterialAmbient[3] := 1.0;
       MaterialDiffuse[0] := 0.50754; MaterialDiffuse[1] := 0.50754; MaterialDiffuse[2] := 0.50754; MaterialDiffuse[3] := 1.0;
@@ -587,7 +646,7 @@ begin
       MaterialShininess := 75.0;
     end;
 
-    6: // Latão
+    6: // Brass
     begin
       MaterialAmbient[0] := 0.329412; MaterialAmbient[1] := 0.223529; MaterialAmbient[2] := 0.027451; MaterialAmbient[3] := 1.0;
       MaterialDiffuse[0] := 0.780392; MaterialDiffuse[1] := 0.568627; MaterialDiffuse[2] := 0.113725; MaterialDiffuse[3] := 1.0;
@@ -595,7 +654,7 @@ begin
       MaterialShininess := 85.0;
     end;
 
-    7: // Platina
+    7: // Platinum
     begin
       MaterialAmbient[0] := 0.23; MaterialAmbient[1] := 0.23; MaterialAmbient[2] := 0.23; MaterialAmbient[3] := 1.0;
       MaterialDiffuse[0] := 0.45; MaterialDiffuse[1] := 0.45; MaterialDiffuse[2] := 0.45; MaterialDiffuse[3] := 1.0;
@@ -603,7 +662,7 @@ begin
       MaterialShininess := 120.0;
     end;
 
-    else // Default: Aço
+    else // Default: Steel
     begin
       MaterialAmbient[0] := 0.25; MaterialAmbient[1] := 0.25; MaterialAmbient[2] := 0.25; MaterialAmbient[3] := 1.0;
       MaterialDiffuse[0] := 0.4;  MaterialDiffuse[1] := 0.4;  MaterialDiffuse[2] := 0.4;  MaterialDiffuse[3] := 1.0;
@@ -612,7 +671,7 @@ begin
     end;
   end;
 
- glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, @MaterialAmbient);
+  glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, @MaterialAmbient);
   glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, @MaterialDiffuse);
   glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, @MaterialSpecular);
   glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, MaterialShininess);
@@ -656,7 +715,7 @@ begin
   glPushMatrix;
   glTranslatef(FCameraX, FCameraY, FCameraZ);
 
-  // Face traseira
+  // Back face
   glBegin(GL_QUADS);
     glTexCoord2f(0.0, 0.0); glVertex3f(-SIZE, -SIZE, -SIZE);
     glTexCoord2f(1.0, 0.0); glVertex3f( SIZE, -SIZE, -SIZE);
@@ -664,7 +723,7 @@ begin
     glTexCoord2f(0.0, 1.0); glVertex3f(-SIZE,  SIZE, -SIZE);
   glEnd;
 
-  // Face frontal
+  // Front face
   glBegin(GL_QUADS);
     glTexCoord2f(1.0, 0.0); glVertex3f(-SIZE, -SIZE,  SIZE);
     glTexCoord2f(0.0, 0.0); glVertex3f( SIZE, -SIZE,  SIZE);
@@ -672,7 +731,7 @@ begin
     glTexCoord2f(1.0, 1.0); glVertex3f(-SIZE,  SIZE,  SIZE);
   glEnd;
 
-  // Face esquerda
+  // Left face
   glBegin(GL_QUADS);
     glTexCoord2f(0.0, 0.0); glVertex3f(-SIZE, -SIZE,  SIZE);
     glTexCoord2f(1.0, 0.0); glVertex3f(-SIZE, -SIZE, -SIZE);
@@ -680,7 +739,7 @@ begin
     glTexCoord2f(0.0, 1.0); glVertex3f(-SIZE,  SIZE,  SIZE);
   glEnd;
 
-  // Face direita
+  // Right face
   glBegin(GL_QUADS);
     glTexCoord2f(1.0, 0.0); glVertex3f( SIZE, -SIZE,  SIZE);
     glTexCoord2f(0.0, 0.0); glVertex3f( SIZE, -SIZE, -SIZE);
@@ -688,7 +747,7 @@ begin
     glTexCoord2f(1.0, 1.0); glVertex3f( SIZE,  SIZE,  SIZE);
   glEnd;
 
-  // Face superior
+  // Top face
   glBegin(GL_QUADS);
     glTexCoord2f(0.0, 1.0); glVertex3f(-SIZE,  SIZE,  SIZE);
     glTexCoord2f(0.0, 0.0); glVertex3f(-SIZE,  SIZE, -SIZE);
@@ -696,7 +755,7 @@ begin
     glTexCoord2f(1.0, 1.0); glVertex3f( SIZE,  SIZE,  SIZE);
   glEnd;
 
-  // Face inferior
+  // Bottom face
   glBegin(GL_QUADS);
     glTexCoord2f(1.0, 1.0); glVertex3f(-SIZE, -SIZE,  SIZE);
     glTexCoord2f(0.0, 1.0); glVertex3f( SIZE, -SIZE,  SIZE);
@@ -731,42 +790,42 @@ begin
   end;
 
   glBegin(GL_QUADS);
-    // Face frontal
+    // Front face
     glNormal3f(0.0, 0.0, 1.0);
     glVertex3f(-SIZE, -SIZE,  SIZE);
     glVertex3f( SIZE, -SIZE,  SIZE);
     glVertex3f( SIZE,  SIZE,  SIZE);
     glVertex3f(-SIZE,  SIZE,  SIZE);
 
-    // Face traseira
+    // Back face
     glNormal3f(0.0, 0.0, -1.0);
     glVertex3f(-SIZE, -SIZE, -SIZE);
     glVertex3f(-SIZE,  SIZE, -SIZE);
     glVertex3f( SIZE,  SIZE, -SIZE);
     glVertex3f( SIZE, -SIZE, -SIZE);
 
-    // Face superior
+    // Top face
     glNormal3f(0.0, 1.0, 0.0);
     glVertex3f(-SIZE,  SIZE,  SIZE);
     glVertex3f( SIZE,  SIZE,  SIZE);
     glVertex3f( SIZE,  SIZE, -SIZE);
     glVertex3f(-SIZE,  SIZE, -SIZE);
 
-    // Face inferior
+    // Bottom face
     glNormal3f(0.0, -1.0, 0.0);
     glVertex3f(-SIZE, -SIZE,  SIZE);
     glVertex3f(-SIZE, -SIZE, -SIZE);
     glVertex3f( SIZE, -SIZE, -SIZE);
     glVertex3f( SIZE, -SIZE,  SIZE);
 
-    // Face direita
+    // Right face
     glNormal3f(1.0, 0.0, 0.0);
     glVertex3f( SIZE, -SIZE,  SIZE);
     glVertex3f( SIZE, -SIZE, -SIZE);
     glVertex3f( SIZE,  SIZE, -SIZE);
     glVertex3f( SIZE,  SIZE,  SIZE);
 
-    // Face esquerda
+    // Left face
     glNormal3f(-1.0, 0.0, 0.0);
     glVertex3f(-SIZE, -SIZE,  SIZE);
     glVertex3f(-SIZE,  SIZE,  SIZE);
@@ -781,7 +840,7 @@ begin
     glDisable(GL_TEXTURE_2D);
   end;
 
-  // Bordas sutis
+  // Subtle edges
   glDisable(GL_LIGHTING);
   glColor3f(0.9, 0.9, 0.9);
   glLineWidth(0.5);
@@ -856,27 +915,33 @@ end;
 
 procedure Tpascubeform.Timer1Timer(Sender: TObject);
 begin
+  // Auto-rotate cube
   if FAutoRotate then
     FRotationY := FRotationY + 0.5;
 
+  // Animate orbiting light
   FLightAngle := FLightAngle + 1.5;
   if FLightAngle > 360 then FLightAngle := FLightAngle - 360;
 
+  // Auto material change
   if FAutoMaterial then
   begin
     Inc(FMaterialTimer);
+    // Change material every 2 seconds (120 frames at 60 FPS)
     if FMaterialTimer >= 120 then
     begin
       FMaterialTimer := 0;
       Inc(FCurrentMaterial);
-      if FCurrentMaterial > 7 then
+      if FCurrentMaterial > 7 then // We have 8 materials (0-7)
         FCurrentMaterial := 0;
 
+      // Update ComboBox to show current material
       if ComboBoxMaterial <> nil then
         ComboBoxMaterial.ItemIndex := FCurrentMaterial;
     end;
   end;
 
+  // Keep angles between 0 and 360
   if FRotationX > 360 then FRotationX := FRotationX - 360;
   if FRotationY > 360 then FRotationY := FRotationY - 360;
   if FRotationZ > 360 then FRotationZ := FRotationZ - 360;
