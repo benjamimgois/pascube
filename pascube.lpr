@@ -17,7 +17,8 @@ uses
 
 begin
   RequireDerivedFormResource := True;
-  Application.Scaled := True;
+  Application.Title:='pasCube';
+  Application.Scaled:=True;
   Application.Initialize;
   Application.CreateForm(Tpascubeform, pascubeform);
   Application.Run;
