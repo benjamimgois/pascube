@@ -6,7 +6,7 @@ interface
 
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, ExtCtrls, ComCtrls,
-  StdCtrls, OpenGLContext, GL, GLU, GLExt, Math, LCLType, FileUtil;
+  StdCtrls, OpenGLContext, GL, GLU, GLExt, Math, LCLType, FileUtil, StrUtils;
 
 type
   { Tpascubeform }
@@ -65,6 +65,7 @@ type
     FSkyboxTexture: GLuint;
     FEnvMapTexture: GLuint;
     FConfigDir: string;
+    FDataDir: string;
     procedure InitializeGL;
     procedure ApplyViewportAndProjection;
     procedure DrawMetallicCube;
@@ -78,7 +79,8 @@ type
     procedure CreateEnvironmentMap;
     procedure GenerateProceduralSkybox;
     function GetUserConfigDir: string;
-    procedure SetupConfigDirectory;
+    function GetUserDataDir: string;
+    procedure SetupDirectories;
   public
   end;
 
@@ -104,27 +106,64 @@ begin
   Result := UserConfig;
 end;
 
-procedure Tpascubeform.SetupConfigDirectory;
+// Function to get user data directory
+function Tpascubeform.GetUserDataDir: string;
+var
+  DataDirs: string;
+  DataDirList: TStringList;
+  UserDataDir: string;
+  i: Integer;
+begin
+  // First try XDG_DATA_HOME
+  UserDataDir := GetEnvironmentVariable('XDG_DATA_HOME');
+  if UserDataDir = '' then
+  begin
+    // If not set, use default ~/.local/share
+    UserDataDir := GetUserDir + '.local' + PathDelim + 'share';
+  end;
+
+  // Also check XDG_DATA_DIRS (system data directories)
+  DataDirs := GetEnvironmentVariable('XDG_DATA_DIRS');
+  if DataDirs = '' then
+  begin
+    // Use default system directories if not set
+    DataDirs := '/usr/local/share:/usr/share';
+  end;
+
+  // We'll use the user's data directory as primary
+  Result := UserDataDir;
+end;
+
+procedure Tpascubeform.SetupDirectories;
 var
   ConfigPath: string;
+  DataPath: string;
 begin
-  // Get base config directory
+  // Setup config directory (~/.config/pascube)
   ConfigPath := GetUserConfigDir;
-
-  // Create .config directory if it doesn't exist
   if not DirectoryExists(ConfigPath) then
     ForceDirectories(ConfigPath);
 
-  // Create pascube subdirectory
   FConfigDir := IncludeTrailingPathDelimiter(ConfigPath) + 'pascube';
   if not DirectoryExists(FConfigDir) then
   begin
     ForceDirectories(FConfigDir);
-   // ShowMessage('Created config directory: ' + FConfigDir);
+    //ShowMessage('Created config directory: ' + FConfigDir);
   end;
-
-  // Ensure trailing path delimiter
   FConfigDir := IncludeTrailingPathDelimiter(FConfigDir);
+
+  // Setup data directory (~/.local/share/pascube)
+  DataPath := GetUserDataDir;
+  if not DirectoryExists(DataPath) then
+    ForceDirectories(DataPath);
+
+  FDataDir := IncludeTrailingPathDelimiter(DataPath) + 'pascube';
+  if not DirectoryExists(FDataDir) then
+  begin
+    ForceDirectories(FDataDir);
+   // ShowMessage('Created data directory: ' + FDataDir);
+  end;
+  FDataDir := IncludeTrailingPathDelimiter(FDataDir);
 end;
 
 procedure Tpascubeform.FormCreate(Sender: TObject);
@@ -136,7 +175,7 @@ begin
   FLightAngle := 0;
   FAutoRotate := True;
   FShowReflection := True;
-  FAutoMaterial := true;
+  FAutoMaterial := True;
   FCurrentMaterial := 3; // Start with Chrome
   FMaterialTimer := 0;
 
@@ -145,8 +184,8 @@ begin
   FCameraY := 3.0;
   FCameraZ := 4.5;
 
-  // Setup config directory first
-  SetupConfigDirectory;
+  // Setup directories first
+  SetupDirectories;
 
   // Create interface controls
   CreateControls;
@@ -301,7 +340,7 @@ begin
   CheckBoxAutoMaterial.Top := 310;
   CheckBoxAutoMaterial.Width := 230;
   CheckBoxAutoMaterial.Caption := 'Auto Material Change';
-  CheckBoxAutoMaterial.Checked := true;
+  CheckBoxAutoMaterial.Checked := True;
   CheckBoxAutoMaterial.OnChange := @CheckBoxAutoMaterialChange;
 
   // Adjust OpenGL Control
@@ -491,6 +530,8 @@ end;
 procedure Tpascubeform.InitializeGL;
 var
   SkyboxFile: string;
+  SearchPaths: TStringList;
+  i: Integer;
 begin
   if FInitialized then Exit;
 
@@ -519,30 +560,48 @@ begin
 
   SetupLighting;
 
-  // First, look for skybox in user config directory
-  SkyboxFile := FConfigDir + 'skybox.png';
-  if not FileExists(SkyboxFile) then
-    SkyboxFile := FConfigDir + 'skybox.jpg';
-  if not FileExists(SkyboxFile) then
-    SkyboxFile := FConfigDir + 'skybox.bmp';
+  // Search for skybox in priority order
+  SearchPaths := TStringList.Create;
+  try
+    // Priority 1: User data directory (~/.local/share/pascube/)
+    SearchPaths.Add(FDataDir);
 
-  // If not found in config dir, check application directory (fallback)
-  if not FileExists(SkyboxFile) then
-  begin
-    SkyboxFile := ExtractFilePath(Application.ExeName) + 'skybox.png';
-    if not FileExists(SkyboxFile) then
-      SkyboxFile := ExtractFilePath(Application.ExeName) + 'skybox.jpg';
-  end;
+    // Priority 2: User config directory (~/.config/pascube/)
+    SearchPaths.Add(FConfigDir);
 
-  if FileExists(SkyboxFile) then
-  begin
-    FSkyboxTexture := LoadTexture(SkyboxFile);
-   // ShowMessage('Loaded skybox from: ' + SkyboxFile);
-  end
-  else
-  begin
-    GenerateProceduralSkybox;
-   // ShowMessage('Using procedural skybox. You can place a skybox.png file in: ' + FConfigDir);
+    // Priority 3: Application directory (fallback)
+    SearchPaths.Add(ExtractFilePath(Application.ExeName));
+
+    SkyboxFile := '';
+    for i := 0 to SearchPaths.Count - 1 do
+    begin
+      // Try different formats
+      SkyboxFile := SearchPaths[i] + 'skybox.png';
+      if FileExists(SkyboxFile) then Break;
+
+      SkyboxFile := SearchPaths[i] + 'skybox.jpg';
+      if FileExists(SkyboxFile) then Break;
+
+      SkyboxFile := SearchPaths[i] + 'skybox.bmp';
+      if FileExists(SkyboxFile) then Break;
+
+      SkyboxFile := ''; // Reset if not found
+    end;
+
+    if FileExists(SkyboxFile) then
+    begin
+      FSkyboxTexture := LoadTexture(SkyboxFile);
+      //ShowMessage('Loaded skybox from: ' + SkyboxFile);
+    end
+    else
+    begin
+      GenerateProceduralSkybox;
+     // ShowMessage('Using procedural skybox. You can place a skybox.png file in:' + LineEnding +
+     //             '1. ' + FDataDir + ' (recommended)' + LineEnding +
+     //             '2. ' + FConfigDir);
+    end;
+  finally
+    SearchPaths.Free;
   end;
 
   CreateEnvironmentMap;
@@ -633,7 +692,7 @@ begin
     4: // Silver
     begin
       MaterialAmbient[0] := 0.19225; MaterialAmbient[1] := 0.19225; MaterialAmbient[2] := 0.19225; MaterialAmbient[3] := 1.0;
-      MaterialDiffuse[0] := 0.50754; MaterialDiffuse[1] := 0.50754; MaterialDiffuse[2] := 0.50754; MaterialDiffuse[3] := 1.0;
+     MaterialDiffuse[0] := 0.50754; MaterialDiffuse[1] := 0.50754; MaterialDiffuse[2] := 0.50754; MaterialDiffuse[3] := 1.0;
       MaterialSpecular[0] := 0.9; MaterialSpecular[1] := 0.9; MaterialSpecular[2] := 0.9; MaterialSpecular[3] := 1.0;
       MaterialShininess := 100.0;
     end;
