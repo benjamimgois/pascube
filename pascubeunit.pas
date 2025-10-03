@@ -570,7 +570,7 @@ begin
     SearchPaths.Add(FConfigDir);
 
     // Priority 3: User config directory (/usr/share/pascube)
-    SearchPaths.Add('/usr/share/pascube');
+    SearchPaths.Add('/usr/share/pascube/');
 
     // Priority 4: Application directory (fallback)
     SearchPaths.Add(ExtractFilePath(Application.ExeName));
