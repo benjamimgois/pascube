@@ -197,8 +197,8 @@ begin
   // AutoResizeViewport enabled
   pascubeOpenGLControl.AutoResizeViewport := True;
 
-  // 60 FPS
-  Timer1.Interval := 16;
+  // 240 FPS
+  Timer1.Interval := 4;
   Timer1.Enabled := True;
 end;
 
@@ -564,10 +564,13 @@ begin
   SearchPaths := TStringList.Create;
   try
     // Priority 1: User data directory (~/.local/share/pascube/)
-    SearchPaths.Add(FDataDir);
+   // SearchPaths.Add(FDataDir);
 
-    // Priority 2: User config directory (~/.config/pascube/)
+    // Priority 1: User config directory (~/.config/pascube/)
     SearchPaths.Add(FConfigDir);
+
+    // Priority 2: User config directory (/usr/share/pascube)
+    SearchPaths.Add('/usr/share/pascube');
 
     // Priority 3: Application directory (fallback)
     SearchPaths.Add(ExtractFilePath(Application.ExeName));
