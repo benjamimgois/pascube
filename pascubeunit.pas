@@ -564,15 +564,15 @@ begin
   SearchPaths := TStringList.Create;
   try
     // Priority 1: User data directory (~/.local/share/pascube/)
-   // SearchPaths.Add(FDataDir);
+    SearchPaths.Add(FDataDir);
 
-    // Priority 1: User config directory (~/.config/pascube/)
+    // Priority 2: User config directory (~/.config/pascube/)
     SearchPaths.Add(FConfigDir);
 
-    // Priority 2: User config directory (/usr/share/pascube)
+    // Priority 3: User config directory (/usr/share/pascube)
     SearchPaths.Add('/usr/share/pascube');
 
-    // Priority 3: Application directory (fallback)
+    // Priority 4: Application directory (fallback)
     SearchPaths.Add(ExtractFilePath(Application.ExeName));
 
     SkyboxFile := '';
