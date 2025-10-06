@@ -1,4 +1,4 @@
 # pasCube
 A simple opengl spinning cube in pascal
 
-<img width="1780" height="1418" alt="image" src="https://github.com/user-attachments/assets/57d2360b-383c-4dfe-a591-2626af93ec53" />
+[Gravar a tela_20251006_091816.webm](https://github.com/user-attachments/assets/b275b6aa-b9eb-4f79-82e5-1bba9562edb6)
