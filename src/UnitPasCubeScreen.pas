@@ -639,7 +639,7 @@ begin
   TpvApplicationInputPointerEventType.Up:begin
    if aPointerEvent.Button=TpvApplicationInputPointerButton.Left then begin
     fMouseLeftButtonDown:=false;
-    // fAutoRotation:=true; // Uncomment to resume auto rotation on release
+    fAutoRotation:=true;
    end;
   end;
   TpvApplicationInputPointerEventType.Motion:begin
