@@ -1,0 +1,168 @@
+diff -r SDL2HG/android-project/src/org/libsdl/app/SDLActivity.java SDL2HGpatched/android-project/src/org/libsdl/app/SDLActivity.java
+13a14
+> import android.content.res.AssetManager;
+38a40,41
+> 	private static final String SDL_HINT_ANDROID_HIDE_SYSTEM_BARS = "SDL_ANDROID_HIDE_SYSTEM_BARS";
+> 
+71a75,76
+> 	protected static AssetManager mAssetManager;
+> 
+92a98
+>        Log.v(TAG, "-->loadLibraries()");
+93a100
+>           Log.v(TAG, "Library: " + lib);
+95a103
+>        Log.v(TAG, "<--loadLibraries()");
+135a144,145
+> 		mAssetManager = this.getAssets();
+> 
+178a189,195
+> 		nativeAddHintCallback(SDL_HINT_ANDROID_HIDE_SYSTEM_BARS, new SDLHintCallback() {
+>             @Override
+>             public void callback(String name, String oldValue, String newValue) {
+> 				                updateSystemBarsStatus(newValue);
+> 				            }
+>         });
+> 
+229a247,248
+> 
+> 		updateSystemBarsStatus(nativeGetHint(SDL_HINT_ANDROID_HIDE_SYSTEM_BARS));
+296a316,317
+> 
+> 		System.exit(0);
+388a410,430
+> 	void updateSystemBarsStatus(String value) {
+> 		if ("1".equals(value)) {
+> 			runOnUiThread(new Runnable() {
+> 				@Override
+> 				public void run() {
+> 					// first try immersive mode (sticky immersive)
+> 					if (Build.VERSION.SDK_INT >= 19) {
+> 						getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
+> 							View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
+> 							View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+> 							View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+> 							View.SYSTEM_UI_FLAG_FULLSCREEN |
+> 							View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+> 					} else if (Build.VERSION.SDK_INT >= 14) {
+> 						// if not available, use at least low profile mode
+> 						getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LOW_PROFILE);
+> 					}
+> 				}
+> 			});
+> 		}
+> 	}
+473a516
+> 	public static native void nativeSetAssetManager(Object assetManager);
+500a544,547
+> 	interface SDLHintCallback {
+>        void callback(String name, String oldValue, String newValue);
+>   }
+>   public static native void nativeAddHintCallback(String name, SDLHintCallback callback);
+1088a1136
+> 		SDLActivity.nativeSetAssetManager(SDLActivity.mAssetManager);
+1090,1091c1138
+< 
+<         //Log.v("SDL", "SDL thread terminated");
+---
+>         Log.v("SDL", "SDL thread terminated");
+1156a1204
+> 		holder.setFormat(PixelFormat.RGBA_8888);
+diff -r SDL2HG/.hg/thgstatus SDL2HGpatched/.hg/thgstatus
+0a1,5
+> mandroid-project/src/org/libsdl/app
+> minclude
+> msrc/core/android
+> msrc/video
+> msrc/video/android
+diff -r SDL2HG/include/SDL_hints.h SDL2HGpatched/include/SDL_hints.h
+820c820,844
+< /**
+---
+>  /**
+>  * \brief A hint to control whether the system shall remember the preferred fullscreen mode.
+>  *
+>  * This hint will work for WinRT only.
+>  *
+>  * The variable can be set to the following values:
+>  *    "0"       - No action. System does not remember whether the app wants to run in fullscreen.
+>  *    "1"       - Remember preferred app setting (fullscreen or windowed).
+>  *
+>  * The default is "0".
+>  *
+>  */
+> #define SDL_HINT_WINRT_REMEMBER_WINDOW_FULLSCREEN_PREFERENCE "SDL_WINRT_REMEMBER_WINDOW_FULLSCREEN_PREFERENCE"
+> 
+>  /**
+>  * \brief A hint to control whether an Android app shall try to dim resp. remove the system bars.
+>  *
+>  * This hint, when set to 1, will try to set "low profile mode" or "sticky immersive mode",
+>  * depending on which Android API was found. If the API version is too low for either,
+>  * nothing will happen.
+>  *
+>  */
+> #define SDL_HINT_ANDROID_HIDE_SYSTEM_BARS "SDL_ANDROID_HIDE_SYSTEM_BARS"
+>  
+>  /**
+diff -r SDL2HG/src/core/android/SDL_android.c SDL2HGpatched/src/core/android/SDL_android.c
+138a139,140
+> JNIEXPORT void JNICALL SDL_JAVA_INTERFACE(nativeAddHintCallback)(JNIEnv* env, jclass cls, jstring name, jobject callback);
+> 
+157a160
+> #include <android/log.h>
+526a530,554
+> void Android_JNI_HintCallback(void *userdata, const char *name, const char *oldValue, const char *newValue) {
+> 	JNIEnv *env = Android_JNI_GetEnv();
+> 
+> 	jobject callback = (jobject)userdata;
+> 	jclass cls = (*env)->GetObjectClass(env, callback);
+> 	jmethodID method = (*env)->GetMethodID(env, cls, "callback", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
+> 
+> 	jstring javaName = (*env)->NewStringUTF(env, name);
+> 	jstring javaOldValue = (*env)->NewStringUTF(env, oldValue);
+> 	jstring javaNewValue = (*env)->NewStringUTF(env, newValue);
+> 
+> 	(*env)->CallVoidMethod(env, callback, method, javaName, javaOldValue, javaNewValue);
+> 
+> 	(*env)->DeleteLocalRef(env, javaName);
+> 	(*env)->DeleteLocalRef(env, javaOldValue);
+> 	(*env)->DeleteLocalRef(env, javaNewValue);
+> 
+> }
+> 
+> JNIEXPORT void JNICALL SDL_JAVA_INTERFACE(nativeAddHintCallback)(JNIEnv* env, jclass cls, jstring name, jobject callback) {
+> 	const char *utfname = (*env)->GetStringUTFChars(env, name, NULL);
+> 	SDL_AddHintCallback(utfname, Android_JNI_HintCallback, (*env)->NewGlobalRef(env, callback));
+> 	(*env)->ReleaseStringUTFChars(env, name, utfname);
+> }
+> 
+670,674d697
+< jclass Android_JNI_GetActivityClass(void)
+< {
+<     return mActivityClass;
+< }
+< 
+1871a1895,1899
+> }
+> 
+> jclass Android_JNI_GetActivityClass(void)
+> {
+>     return mActivityClass;
+diff -r SDL2HG/src/video/android/SDL_androidwindow.c SDL2HGpatched/src/video/android/SDL_androidwindow.c
+75c75,77
+<     if ((window->flags & SDL_WINDOW_VULKAN) == 0) {
+---
+> 	if (window->flags & SDL_WINDOW_VULKAN) {
+> 		data->egl_surface = EGL_NO_SURFACE;
+> 	} else {
+diff -r SDL2HG/src/video/SDL_video.c SDL2HGpatched/src/video/SDL_video.c
+1385c1385
+<     if (!_this->is_dummy) {
+---
+> 	if (!(_this->is_dummy || (flags & SDL_WINDOW_VULKAN))) {
+1397a1398,1402
+> 
+> 	/* OpenGL and Vulkan could not be used at the same time */
+> 	if ((flags & (SDL_WINDOW_OPENGL | SDL_WINDOW_VULKAN)) == (SDL_WINDOW_OPENGL | SDL_WINDOW_VULKAN)) {
+> 		SDL_SetError("OpenGL and Vulkan could not be used at the same time");		
+> 	}

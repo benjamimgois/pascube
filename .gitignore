@@ -1,4 +1,6 @@
 pascube
+bin/
+pascube_vulkan
 lib/
 backup/
 pascube.lps
