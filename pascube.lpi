@@ -11,7 +11,7 @@
         <CompatibilityMode Value="True"/>
       </Flags>
       <SessionStorage Value="InProjectDir"/>
-      <Title Value="pascube_vulkan"/>
+      <Title Value="pascube"/>
       <UseAppBundle Value="False"/>
       <ResourceType Value="res"/>
       <Icon Value="0"/>
@@ -30,7 +30,7 @@
     </RunParams>
     <Units Count="1">
       <Unit0>
-        <Filename Value="pascube_vulkan.lpr"/>
+        <Filename Value="pascube.lpr"/>
         <IsPartOfProject Value="True"/>
       </Unit0>
     </Units>
@@ -39,7 +39,7 @@
     <Version Value="11"/>
     <PathDelim Value="\"/>
     <Target>
-      <Filename Value="bin/pascube_vulkan"/>
+      <Filename Value="bin/pascube"/>
     </Target>
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir);.;pasvulkan/src"/>

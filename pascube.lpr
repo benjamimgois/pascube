@@ -1,4 +1,4 @@
-program pascube_vulkan;
+program pascube;
 {$ifdef fpc}
  {$mode delphi}
 {$else}

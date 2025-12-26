@@ -60,8 +60,8 @@ begin
   VulkanDebugging:=true;
   VulkanValidation:=true;
  end;
- Title:='PasCube Vulkan 1.6.0 beta';
- PathName:='PasCubeVulkan';
+ Title:='PasCube 1.6.0 beta';
+ PathName:='PasCube';
  StartScreen:=TPasCubeScreen;
  VisibleMouseCursor:=true;
  CatchMouse:=false;
