@@ -28,9 +28,12 @@ uses SysUtils,
      PasVulkan.Framework,
      PasVulkan.Application;
 
+const CountTextures=4;
+
 type PScreenExampleCubeUniformBuffer=^TScreenExampleCubeUniformBuffer;
      TScreenExampleCubeUniformBuffer=record
       ModelViewProjectionMatrix:TpvMatrix4x4;
+      ModelViewMatrix:TpvMatrix4x4;
       ModelViewNormalMatrix:TpvMatrix4x4;
      end;
 
@@ -56,19 +59,22 @@ type PScreenExampleCubeUniformBuffer=^TScreenExampleCubeUniformBuffer;
        fVulkanPipelineShaderStageCubeVertex:TpvVulkanPipelineShaderStage;
        fVulkanPipelineShaderStageCubeFragment:TpvVulkanPipelineShaderStage;
        fVulkanGraphicsPipeline:TpvVulkanGraphicsPipeline;
+       fMouseLeftButtonDown:boolean;
+       fLastMousePosition:TpvVector2;
+       fAutoRotation:boolean;
        fVulkanRenderPass:TpvVulkanRenderPass;
        fVulkanVertexBuffer:TpvVulkanBuffer;
        fVulkanIndexBuffer:TpvVulkanBuffer;
        fVulkanUniformBuffers:array[0..MaxInFlightFrames-1] of TpvVulkanBuffer;
        fVulkanDescriptorPool:TpvVulkanDescriptorPool;
        fVulkanDescriptorSetLayout:TpvVulkanDescriptorSetLayout;
-       fVulkanDescriptorSets:array[0..MaxInFlightFrames-1] of TpvVulkanDescriptorSet;
+       fVulkanDescriptorSets:array[0..MaxInFlightFrames-1,0..CountTextures-1] of TpvVulkanDescriptorSet;
        fVulkanPipelineLayout:TpvVulkanPipelineLayout;
        fVulkanCommandPool:TpvVulkanCommandPool;
        fVulkanRenderCommandBuffers:array[0..MaxInFlightFrames-1] of array of TpvVulkanCommandBuffer;
        fVulkanRenderSemaphores:array[0..MaxInFlightFrames-1] of TpvVulkanSemaphore;
        fUniformBuffer:TScreenExampleCubeUniformBuffer;
-       fBoxAlbedoTexture:TpvVulkanTexture;
+       fBoxAlbedoTextures:array[0..CountTextures-1] of TpvVulkanTexture;
        fReady:boolean;
        fState:TScreenExampleCubeState;
        fStates:TScreenExampleCubeStates;
@@ -108,7 +114,7 @@ type PScreenExampleCubeUniformBuffer=^TScreenExampleCubeUniformBuffer;
 
 implementation
 
-uses UnitPasCubeApplication;
+uses UnitPasCubeApplication, UnitTextOverlay;
 
 type PVertex=^TVertex;
      TVertex=record
@@ -188,6 +194,9 @@ const CubeVertices:array[0..23] of TVertex=
 constructor TPasCubeScreen.Create;
 begin
  inherited Create;
+ fMouseLeftButtonDown:=false;
+ fLastMousePosition:=TpvVector2.Create(0.0,0.0);
+ fAutoRotation:=true;
  FillChar(fState,SizeOf(TScreenExampleCubeState),#0);
  FillChar(fStates,SizeOf(TScreenExampleCubeStates),#0);
  fReady:=false;
@@ -245,28 +254,29 @@ begin
   Stream.Free;
  end;
 
- fBoxAlbedoTexture:=TpvVulkanTexture.CreateDefault(pvApplication.VulkanDevice,
-                                                   pvApplication.VulkanDevice.GraphicsQueue,
-                                                   fVulkanGraphicsCommandBuffer,
-                                                   fVulkanGraphicsCommandBufferFence,
-                                                   pvApplication.VulkanDevice.TransferQueue,
-                                                   fVulkanTransferCommandBuffer,
-                                                   fVulkanTransferCommandBufferFence,
-                                                   TpvVulkanTextureDefaultType.Checkerboard,
-                                                   512,
-                                                   512,
-                                                   0,
-                                                   0,
-                                                   1,
-                                                   true,
-                                                   true,
-                                                   true);
-
- fBoxAlbedoTexture.WrapModeU:=TpvVulkanTextureWrapMode.ClampToEdge;
- fBoxAlbedoTexture.WrapModeV:=TpvVulkanTextureWrapMode.ClampToEdge;
- fBoxAlbedoTexture.WrapModeW:=TpvVulkanTextureWrapMode.ClampToEdge;
- fBoxAlbedoTexture.BorderColor:=VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
- fBoxAlbedoTexture.UpdateSampler;
+  for Index:=0 to CountTextures-1 do begin
+   // Use metal.png for everything. Material properties are defined by PushConstants (Tint/Opacity) in Draw.
+   Stream:=pvApplication.Assets.GetAssetStream('textures/metal.png');
+   try
+    fBoxAlbedoTextures[Index]:=TpvVulkanTexture.CreateFromImage(pvApplication.VulkanDevice,
+                                                                pvApplication.VulkanDevice.GraphicsQueue,
+                                                                fVulkanGraphicsCommandBuffer,
+                                                                fVulkanGraphicsCommandBufferFence,
+                                                                pvApplication.VulkanDevice.TransferQueue,
+                                                                fVulkanTransferCommandBuffer,
+                                                                fVulkanTransferCommandBufferFence,
+                                                                Stream,
+                                                                true,
+                                                                true);
+   finally
+    Stream.Free;
+   end;
+   fBoxAlbedoTextures[Index].WrapModeU:=TpvVulkanTextureWrapMode.ClampToEdge;
+   fBoxAlbedoTextures[Index].WrapModeV:=TpvVulkanTextureWrapMode.ClampToEdge;
+   fBoxAlbedoTextures[Index].WrapModeW:=TpvVulkanTextureWrapMode.ClampToEdge;
+   fBoxAlbedoTextures[Index].BorderColor:=VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+   fBoxAlbedoTextures[Index].UpdateSampler;
+  end;
 
  fVulkanPipelineShaderStageCubeVertex:=TpvVulkanPipelineShaderStage.Create(VK_SHADER_STAGE_VERTEX_BIT,fCubeVertexShaderModule,'main');
 
@@ -333,9 +343,9 @@ begin
 
  fVulkanDescriptorPool:=TpvVulkanDescriptorPool.Create(pvApplication.VulkanDevice,
                                                        TVkDescriptorPoolCreateFlags(VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT),
-                                                       MaxInFlightFrames);
- fVulkanDescriptorPool.AddDescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,MaxInFlightFrames);
- fVulkanDescriptorPool.AddDescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,MaxInFlightFrames);
+                                                       MaxInFlightFrames*CountTextures);
+ fVulkanDescriptorPool.AddDescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,MaxInFlightFrames*CountTextures);
+ fVulkanDescriptorPool.AddDescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,MaxInFlightFrames*CountTextures);
  fVulkanDescriptorPool.Initialize;
 
  fVulkanDescriptorSetLayout:=TpvVulkanDescriptorSetLayout.Create(pvApplication.VulkanDevice);
@@ -352,31 +362,35 @@ begin
  fVulkanDescriptorSetLayout.Initialize;
 
  for Index:=0 to MaxInFlightFrames-1 do begin
-  fVulkanDescriptorSets[Index]:=TpvVulkanDescriptorSet.Create(fVulkanDescriptorPool,
-                                                              fVulkanDescriptorSetLayout);
-  fVulkanDescriptorSets[Index].WriteToDescriptorSet(0,
-                                                    0,
-                                                    1,
-                                                    TVkDescriptorType(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER),
-                                                    [],
-                                                    [fVulkanUniformBuffers[Index].DescriptorBufferInfo],
-                                                    [],
-                                                    false
-                                                   );
-  fVulkanDescriptorSets[Index].WriteToDescriptorSet(1,
-                                                    0,
-                                                    1,
-                                                    TVkDescriptorType(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER),
-                                                    [fBoxAlbedoTexture.DescriptorImageInfo],
-                                                    [],
-                                                    [],
-                                                    false
-                                                   );
-  fVulkanDescriptorSets[Index].Flush;
+  for SwapChainImageIndex:=0 to CountTextures-1 do begin
+   fVulkanDescriptorSets[Index,SwapChainImageIndex]:=TpvVulkanDescriptorSet.Create(fVulkanDescriptorPool,
+                                                                                   fVulkanDescriptorSetLayout);
+   fVulkanDescriptorSets[Index,SwapChainImageIndex].WriteToDescriptorSet(0,
+                                                                         0,
+                                                                         1,
+                                                                         TVkDescriptorType(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER),
+                                                                         [],
+                                                                         [fVulkanUniformBuffers[Index].DescriptorBufferInfo],
+                                                                         [],
+                                                                         false
+                                                                        );
+   fVulkanDescriptorSets[Index,SwapChainImageIndex].WriteToDescriptorSet(1,
+                                                                         0,
+                                                                         1,
+                                                                         TVkDescriptorType(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER),
+                                                                         [fBoxAlbedoTextures[SwapChainImageIndex].DescriptorImageInfo],
+                                                                         [],
+                                                                         [],
+                                                                         false
+                                                                        );
+   fVulkanDescriptorSets[Index,SwapChainImageIndex].Flush;
+  end;
  end;
 
  fVulkanPipelineLayout:=TpvVulkanPipelineLayout.Create(pvApplication.VulkanDevice);
  fVulkanPipelineLayout.AddDescriptorSetLayout(fVulkanDescriptorSetLayout);
+ // Push constant range should cover both vectors (2 * SizeOf(TpvVector4) = 32 bytes)
+ fVulkanPipelineLayout.AddPushConstantRange(TVkShaderStageFlags(VK_SHADER_STAGE_FRAGMENT_BIT),0,SizeOf(TpvVector4)*2);
  fVulkanPipelineLayout.Initialize;
 
 end;
@@ -386,7 +400,9 @@ var Index,SwapChainImageIndex:TpvInt32;
 begin
  FreeAndNil(fVulkanPipelineLayout);
  for Index:=0 to MaxInFlightFrames-1 do begin
-  FreeAndNil(fVulkanDescriptorSets[Index]);
+  for SwapChainImageIndex:=0 to CountTextures-1 do begin
+   FreeAndNil(fVulkanDescriptorSets[Index,SwapChainImageIndex]);
+  end;
  end;
  FreeAndNil(fVulkanDescriptorSetLayout);
  FreeAndNil(fVulkanDescriptorPool);
@@ -395,13 +411,15 @@ begin
  end;
  FreeAndNil(fVulkanIndexBuffer);
  FreeAndNil(fVulkanVertexBuffer);
- FreeAndNil(fVulkanRenderPass);
- FreeAndNil(fVulkanGraphicsPipeline);
- FreeAndNil(fVulkanPipelineShaderStageCubeVertex);
+  FreeAndNil(fVulkanRenderPass);
+  FreeAndNil(fVulkanGraphicsPipeline);
+  FreeAndNil(fVulkanPipelineShaderStageCubeVertex);
  FreeAndNil(fVulkanPipelineShaderStageCubeFragment);
  FreeAndNil(fCubeFragmentShaderModule);
  FreeAndNil(fCubeVertexShaderModule);
- FreeAndNil(fBoxAlbedoTexture);
+  for Index:=0 to CountTextures-1 do begin
+   FreeAndNil(fBoxAlbedoTextures[Index]);
+  end;
  for Index:=0 to MaxInFlightFrames-1 do begin
   for SwapChainImageIndex:=0 to length(fVulkanRenderCommandBuffers[Index])-1 do begin
    FreeAndNil(fVulkanRenderCommandBuffers[Index,SwapChainImageIndex]);
@@ -440,10 +458,10 @@ var Index,SwapChainImageIndex:TpvInt32;
 begin
  inherited AfterCreateSwapChain;
 
- FreeAndNil(fVulkanRenderPass);
- FreeAndNil(fVulkanGraphicsPipeline);
+  FreeAndNil(fVulkanRenderPass);
+  FreeAndNil(fVulkanGraphicsPipeline);
 
- fVulkanRenderPass:=TpvVulkanRenderPass.Create(pvApplication.VulkanDevice);
+  fVulkanRenderPass:=TpvVulkanRenderPass.Create(pvApplication.VulkanDevice);
 
  fVulkanRenderPass.AddSubpassDescription(0,
                                          VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -545,11 +563,11 @@ begin
  fVulkanGraphicsPipeline.ColorBlendState.BlendConstants[1]:=0.0;
  fVulkanGraphicsPipeline.ColorBlendState.BlendConstants[2]:=0.0;
  fVulkanGraphicsPipeline.ColorBlendState.BlendConstants[3]:=0.0;
- fVulkanGraphicsPipeline.ColorBlendState.AddColorBlendAttachmentState(false,
-                                                                      VK_BLEND_FACTOR_ZERO,
-                                                                      VK_BLEND_FACTOR_ZERO,
+ fVulkanGraphicsPipeline.ColorBlendState.AddColorBlendAttachmentState(true,
+                                                                      VK_BLEND_FACTOR_SRC_ALPHA,
+                                                                      VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
                                                                       VK_BLEND_OP_ADD,
-                                                                      VK_BLEND_FACTOR_ZERO,
+                                                                      VK_BLEND_FACTOR_ONE,
                                                                       VK_BLEND_FACTOR_ZERO,
                                                                       VK_BLEND_OP_ADD,
                                                                       TVkColorComponentFlags(VK_COLOR_COMPONENT_R_BIT) or
@@ -558,16 +576,16 @@ begin
                                                                       TVkColorComponentFlags(VK_COLOR_COMPONENT_A_BIT));
 
  fVulkanGraphicsPipeline.DepthStencilState.DepthTestEnable:=true;
- fVulkanGraphicsPipeline.DepthStencilState.DepthWriteEnable:=true;
+ fVulkanGraphicsPipeline.DepthStencilState.DepthWriteEnable:=true; // Glass usually disables DepthWrite but here we want it for simplicity
  fVulkanGraphicsPipeline.DepthStencilState.DepthCompareOp:=VK_COMPARE_OP_LESS;
  fVulkanGraphicsPipeline.DepthStencilState.DepthBoundsTestEnable:=false;
  fVulkanGraphicsPipeline.DepthStencilState.StencilTestEnable:=false;
 
- fVulkanGraphicsPipeline.Initialize;
-
- fVulkanGraphicsPipeline.FreeMemory;
-
- for Index:=0 to pvApplication.CountInFlightFrames-1 do begin
+  fVulkanGraphicsPipeline.Initialize;
+ 
+  fVulkanGraphicsPipeline.FreeMemory;
+ 
+  for Index:=0 to pvApplication.CountInFlightFrames-1 do begin
 
   for SwapChainImageIndex:=0 to length(fVulkanRenderCommandBuffers[Index])-1 do begin
    FreeAndNil(fVulkanRenderCommandBuffers[Index,SwapChainImageIndex]);
@@ -579,33 +597,13 @@ begin
 
    fVulkanRenderCommandBuffers[Index,SwapChainImageIndex]:=TpvVulkanCommandBuffer.Create(fVulkanCommandPool,VK_COMMAND_BUFFER_LEVEL_PRIMARY);
 
-   VulkanCommandBuffer:=fVulkanRenderCommandBuffers[Index,SwapChainImageIndex];
-
-   VulkanCommandBuffer.BeginRecording(TVkCommandBufferUsageFlags(VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT));
-
-   fVulkanRenderPass.BeginRenderPass(VulkanCommandBuffer,
-                                     pvApplication.VulkanFrameBuffers[SwapChainImageIndex],
-                                     VK_SUBPASS_CONTENTS_INLINE,
-                                     0,
-                                     0,
-                                     pvApplication.VulkanSwapChain.Width,
-                                     pvApplication.VulkanSwapChain.Height);
-
-   VulkanCommandBuffer.CmdBindDescriptorSets(VK_PIPELINE_BIND_POINT_GRAPHICS,fVulkanPipelineLayout.Handle,0,1,@fVulkanDescriptorSets[Index].Handle,0,nil);
-   VulkanCommandBuffer.CmdBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS,fVulkanGraphicsPipeline.Handle);
-   VulkanCommandBuffer.CmdBindVertexBuffers(0,1,@fVulkanVertexBuffer.Handle,@Offsets);
-   VulkanCommandBuffer.CmdBindIndexBuffer(fVulkanIndexBuffer.Handle,0,VK_INDEX_TYPE_UINT32);
-   VulkanCommandBuffer.CmdDrawIndexed(length(CubeIndices),1,0,0,0);
-
-   fVulkanRenderPass.EndRenderPass(VulkanCommandBuffer);
-
-   VulkanCommandBuffer.EndRecording;
-
   end;
 
  end;
 
 end;
+
+
 
 procedure TPasCubeScreen.BeforeDestroySwapChain;
 begin
@@ -627,8 +625,32 @@ begin
 end;
 
 function TPasCubeScreen.PointerEvent(const aPointerEvent:TpvApplicationInputPointerEvent):boolean;
+var Delta:TpvVector2;
 begin
- result:=false;
+ result:=inherited PointerEvent(aPointerEvent);
+ case aPointerEvent.PointerEventType of
+  TpvApplicationInputPointerEventType.Down:begin
+   if aPointerEvent.Button=TpvApplicationInputPointerButton.Left then begin
+    fMouseLeftButtonDown:=true;
+    fLastMousePosition:=aPointerEvent.Position;
+    fAutoRotation:=false;
+   end;
+  end;
+  TpvApplicationInputPointerEventType.Up:begin
+   if aPointerEvent.Button=TpvApplicationInputPointerButton.Left then begin
+    fMouseLeftButtonDown:=false;
+    // fAutoRotation:=true; // Uncomment to resume auto rotation on release
+   end;
+  end;
+  TpvApplicationInputPointerEventType.Motion:begin
+   if fMouseLeftButtonDown then begin
+    Delta:=aPointerEvent.Position-fLastMousePosition;
+    fLastMousePosition:=aPointerEvent.Position;
+    fState.AnglePhases[1]:=fState.AnglePhases[1]+(Delta.x*0.005);
+    fState.AnglePhases[0]:=fState.AnglePhases[0]+(Delta.y*0.005);
+   end;
+  end;
+ end;
 end;
 
 function TPasCubeScreen.Scrolled(const aRelativeAmount:TpvVector2):boolean;
@@ -646,11 +668,22 @@ const f0=1.0/(2.0*pi);
       f1=0.5/(2.0*pi);
 begin
  inherited Update(aDeltaTime);
- fState.Time:=fState.Time+aDeltaTime;
- fState.AnglePhases[0]:=frac(fState.AnglePhases[0]+(aDeltaTime*f0));
- fState.AnglePhases[1]:=frac(fState.AnglePhases[1]+(aDeltaTime*f1));
+ if fAutoRotation then begin
+  fState.Time:=fState.Time+aDeltaTime;
+  fState.AnglePhases[0]:=frac(fState.AnglePhases[0]+(aDeltaTime*f0));
+  fState.AnglePhases[1]:=frac(fState.AnglePhases[1]+(aDeltaTime*f1));
+ end;
  fStates[pvApplication.UpdateInFlightFrameIndex]:=fState;
  fReady:=true;
+
+ if assigned(UnitPasCubeApplication.Application) and assigned(UnitPasCubeApplication.Application.TextOverlay) then begin
+  case Trunc(fState.Time*0.33) mod 4 of
+   0: UnitPasCubeApplication.Application.TextOverlay.AddText(pvApplication.Width*0.5,pvApplication.Height*0.9,2.0,toaCenter,'Copper');
+   1: UnitPasCubeApplication.Application.TextOverlay.AddText(pvApplication.Width*0.5,pvApplication.Height*0.9,2.0,toaCenter,'Gold');
+   2: UnitPasCubeApplication.Application.TextOverlay.AddText(pvApplication.Width*0.5,pvApplication.Height*0.9,2.0,toaCenter,'Steel');
+   3: UnitPasCubeApplication.Application.TextOverlay.AddText(pvApplication.Width*0.5,pvApplication.Height*0.9,2.0,toaCenter,'Titanium');
+  end;
+ end;
 end;
 
 procedure TPasCubeScreen.Draw(const aSwapChainImageIndex:TpvInt32;var aWaitSemaphore:TpvVulkanSemaphore;const aWaitFence:TpvVulkanFence=nil);
@@ -660,6 +693,11 @@ var p:pointer;
     ViewMatrix:TpvMatrix4x4;
     ProjectionMatrix:TpvMatrix4x4;
     State:PScreenExampleCubeState;
+    TextureIndex:TpvInt32;
+    PushConstants:record 
+                   Vector:TpvVector4; 
+                   Params:TpvVector4;
+                  end;
 begin
  inherited Draw(aSwapChainImageIndex,aWaitSemaphore,nil);
  if assigned(fVulkanGraphicsPipeline) then begin
@@ -672,6 +710,7 @@ begin
   ProjectionMatrix:=TpvMatrix4x4.CreatePerspective(45.0,pvApplication.Width/pvApplication.Height,1.0,128.0);
 
   fUniformBuffer.ModelViewProjectionMatrix:=(ModelMatrix*ViewMatrix)*ProjectionMatrix;
+  fUniformBuffer.ModelViewMatrix:=ModelMatrix*ViewMatrix;
   fUniformBuffer.ModelViewNormalMatrix:=TpvMatrix4x4.Create((ModelMatrix*ViewMatrix).ToMatrix3x3.Inverse.Transpose);
 
   p:=fVulkanUniformBuffers[pvApplication.DrawInFlightFrameIndex].Memory.MapMemory(0,SizeOf(TScreenExampleCubeUniformBuffer));
@@ -679,6 +718,73 @@ begin
    Move(fUniformBuffer,p^,SizeOf(TScreenExampleCubeUniformBuffer));
    fVulkanUniformBuffers[pvApplication.DrawInFlightFrameIndex].Memory.UnmapMemory;
   end;
+
+  fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].Reset(TVkCommandBufferResetFlags(VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT));
+  fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].BeginRecording(TVkCommandBufferUsageFlags(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT));
+
+  fVulkanRenderPass.BeginRenderPass(fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex],
+                                    pvApplication.VulkanFrameBuffers[aSwapChainImageIndex],
+                                    VK_SUBPASS_CONTENTS_INLINE,
+                                    0,
+                                    0,
+                                    pvApplication.VulkanSwapChain.Width,
+                                    pvApplication.VulkanSwapChain.Height);
+
+  fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].CmdBindVertexBuffers(0,1,@fVulkanVertexBuffer.Handle,@Offsets);
+  fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].CmdBindIndexBuffer(fVulkanIndexBuffer.Handle,0,VK_INDEX_TYPE_UINT32);
+
+  TextureIndex:=Trunc(State^.Time*0.33) mod CountTextures;
+
+   case TextureIndex of
+    0:begin
+     // Copper (Swapped with Gold)
+     PushConstants.Vector:=TpvVector4.Create(0.72, 0.45, 0.20, 1.0); 
+     PushConstants.Params:=TpvVector4.Create(1.0, 0.6, 16.0, 0.0); 
+    end;
+    1:begin
+     // Gold (Swapped with Copper)
+     PushConstants.Vector:=TpvVector4.Create(1.0, 0.84, 0.0, 1.0); 
+     PushConstants.Params:=TpvVector4.Create(1.0, 0.8, 32.0, 0.0); 
+    end;
+    2:begin
+     // Steel
+     PushConstants.Vector:=TpvVector4.Create(0.8, 0.8, 0.9, 1.0); 
+     PushConstants.Params:=TpvVector4.Create(0.9, 0.9, 64.0, 0.0); // Shiny
+    end;
+    3:begin
+     // Titanium
+     PushConstants.Vector:=TpvVector4.Create(0.3, 0.3, 0.4, 1.0); 
+     PushConstants.Params:=TpvVector4.Create(0.8, 0.5, 128.0, 0.0); // Matte-ish but smooth
+    end;
+    else begin
+     PushConstants.Vector:=TpvVector4.Create(1.0, 1.0, 1.0, 1.0);
+     PushConstants.Params:=TpvVector4.Create(1.0, 1.0, 32.0, 0.0);
+    end;
+   end;
+ 
+   // Bind Standard Pipeline (for Front Faces or Opaque)
+   fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].CmdBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS,fVulkanGraphicsPipeline.Handle);
+  
+  fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].CmdPushConstants(fVulkanPipelineLayout.Handle,
+                                                                                                        TVkShaderStageFlags(VK_SHADER_STAGE_FRAGMENT_BIT),
+                                                                                                        0,
+                                                                                                        SizeOf(TpvVector4)*2, // Send both vectors
+                                                                                                        @PushConstants);
+
+  fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].CmdBindDescriptorSets(VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                                                                                               fVulkanPipelineLayout.Handle,
+                                                                                                               0,
+                                                                                                               1,
+                                                                                                               @fVulkanDescriptorSets[pvApplication.DrawInFlightFrameIndex,TextureIndex].Handle,
+                                                                                                               0,
+                                                                                                               nil);
+
+  fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].CmdDrawIndexed(length(CubeIndices),1,0,0,0);
+
+
+  fVulkanRenderPass.EndRenderPass(fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex]);
+
+  fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].EndRecording;
 
   fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].Execute(pvApplication.VulkanDevice.GraphicsQueue,
                                                                                                  TVkPipelineStageFlags(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT),

@@ -27,15 +27,26 @@ uses SysUtils,
      PasVulkan.Math,
      PasVulkan.Framework,
      PasVulkan.Application,
-     UnitPasCubeScreen;
+     UnitPasCubeScreen,
+     UnitTextOverlay;
 
 type TPasCubeApplication=class(TpvApplication)
+      private
+       fTextOverlay:TTextOverlay;
       public
        constructor Create; override;
        destructor Destroy; override;
        procedure Setup; override;
        procedure Start; override;
        procedure Stop; override;
+       procedure Load; override;
+       procedure Unload; override;
+       procedure AfterCreateSwapChain; override;
+       procedure BeforeDestroySwapChain; override;
+       procedure Update(const aDeltaTime:TpvDouble); override;
+       procedure Draw(const aSwapChainImageIndex:TpvInt32;var aWaitSemaphore:TpvVulkanSemaphore;const aWaitFence:TpvVulkanFence=nil); override;
+      published
+       property TextOverlay:TTextOverlay read fTextOverlay;
       end;
 
 var Application:TPasCubeApplication=nil;
@@ -46,6 +57,7 @@ constructor TPasCubeApplication.Create;
 begin
  inherited Create;
  Application:=self;
+ fTextOverlay:=nil;
 end;
 
 destructor TPasCubeApplication.Destroy;
@@ -71,7 +83,10 @@ begin
  WaitOnPreviousFrames:=false;
  VulkanAPIVersion:=VK_API_VERSION_1_0;
  Blocking:=true;
+ VulkanAPIVersion:=VK_API_VERSION_1_0;
+ Blocking:=true;
  PresentMode:=TpvApplicationPresentMode.VSync;
+ fTextOverlay:=TTextOverlay.Create;
 end;
 
 procedure TPasCubeApplication.Start;
@@ -82,6 +97,57 @@ end;
 procedure TPasCubeApplication.Stop;
 begin
  inherited Stop;
+end;
+
+procedure TPasCubeApplication.Load;
+begin
+ inherited Load;
+ if assigned(fTextOverlay) then begin
+  fTextOverlay.Load;
+ end;
+end;
+
+procedure TPasCubeApplication.Unload;
+begin
+ if assigned(fTextOverlay) then begin
+  fTextOverlay.Unload;
+ end;
+ inherited Unload;
+end;
+
+procedure TPasCubeApplication.AfterCreateSwapChain;
+begin
+ inherited AfterCreateSwapChain;
+ if assigned(fTextOverlay) then begin
+  fTextOverlay.AfterCreateSwapChain;
+ end;
+end;
+
+procedure TPasCubeApplication.BeforeDestroySwapChain;
+begin
+ if assigned(fTextOverlay) then begin
+  fTextOverlay.BeforeDestroySwapChain;
+ end;
+ inherited BeforeDestroySwapChain;
+end;
+
+procedure TPasCubeApplication.Update(const aDeltaTime:TpvDouble);
+begin
+ if assigned(fTextOverlay) then begin
+  fTextOverlay.PreUpdate(aDeltaTime);
+ end;
+ inherited Update(aDeltaTime);
+ if assigned(fTextOverlay) then begin
+  fTextOverlay.PostUpdate(aDeltaTime);
+ end;
+end;
+
+procedure TPasCubeApplication.Draw(const aSwapChainImageIndex:TpvInt32;var aWaitSemaphore:TpvVulkanSemaphore;const aWaitFence:TpvVulkanFence=nil);
+begin
+ inherited Draw(aSwapChainImageIndex,aWaitSemaphore,aWaitFence);
+ if assigned(fTextOverlay) then begin
+  fTextOverlay.Draw(aSwapChainImageIndex,aWaitSemaphore,aWaitFence);
+ end;
 end;
 
 end.
