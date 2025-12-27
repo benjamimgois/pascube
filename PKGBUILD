@@ -1,6 +1,6 @@
 # Maintainer: Benjamim Gois <your-email>
 pkgname=pascube-git
-pkgver=1.5.0.r0.g0000000
+pkgver=1.6.1.r1.gd8b67ec
 pkgrel=1
 pkgdesc="A simple OpenGL spinning cube written in Pascal (Lazarus/Qt6)"
 arch=('x86_64')
@@ -42,7 +42,7 @@ build() {
   cd "${pkgname%-git}"
 
   # Build using LCL Qt6
-  lazbuild --widgetset=qt6 --primary-config-path=build "${pkgname%-git}.lpi"
+  lazbuild --lazarusdir=/usr/lib/lazarus --widgetset=qt6 --primary-config-path=build "${pkgname%-git}.lpi"
 
   # Detect the resulting binary location
   BIN_CANDIDATE=""
