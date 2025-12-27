@@ -1,6 +1,6 @@
 # Maintainer: Benjamim Gois <your-email>
 pkgname=pascube-git
-pkgver=1.6.1.r1.gd8b67ec
+pkgver=1.6.1.r2.gc5b5a77
 pkgrel=1
 pkgdesc="A simple OpenGL spinning cube written in Pascal (Lazarus/Qt6)"
 arch=('x86_64')
@@ -17,6 +17,7 @@ makedepends=(
   'fpc'
   'fpc-src'
   'lazarus'    # provides lazbuild on Arch
+  'clang'      # for compiling PasVulkan lzma_c
 )
 provides=("${pkgname%-git}")
 conflicts=("${pkgname%-git}")
@@ -38,8 +39,13 @@ prepare() {
 }
 
 build() {
-  set -euo pipefail
+
   cd "${pkgname%-git}"
+  
+  # Compile missing PasVulkan LZMA object file
+  msg "Compiling lzmadec_linux_x86_64.o..."
+  clang -c -target x86_64-linux -g -gdwarf-2 -masm=intel -O3 -D linux -fverbose-asm -fno-builtin \
+        "pasvulkan/src/lzma_c/LzmaDec.c" -o "pasvulkan/src/lzma_c/lzmadec_linux_x86_64.o"
 
   # Build using LCL Qt6
   lazbuild --lazarusdir=/usr/lib/lazarus --widgetset=qt6 --primary-config-path=build "${pkgname%-git}.lpi"
@@ -60,7 +66,6 @@ build() {
 }
 
 package() {
-  set -euo pipefail
   cd "${pkgname%-git}"
 
   # Read binary path detected during build()
