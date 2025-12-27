@@ -508,9 +508,9 @@ begin
                                         TVkDependencyFlags(VK_DEPENDENCY_BY_REGION_BIT));
  fVulkanRenderPass.Initialize;
 
- fVulkanRenderPass.ClearValues[0].color.float32[0]:=0.0;
- fVulkanRenderPass.ClearValues[0].color.float32[1]:=0.0;
- fVulkanRenderPass.ClearValues[0].color.float32[2]:=0.0;
+ fVulkanRenderPass.ClearValues[0].color.float32[0]:=0.15;
+ fVulkanRenderPass.ClearValues[0].color.float32[1]:=0.15;
+ fVulkanRenderPass.ClearValues[0].color.float32[2]:=0.15;
  fVulkanRenderPass.ClearValues[0].color.float32[3]:=1.0;
 
  fVulkanGraphicsPipeline:=TpvVulkanGraphicsPipeline.Create(pvApplication.VulkanDevice,

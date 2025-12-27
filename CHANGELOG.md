@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.6.0] - 2025-12-26
+## [1.6.1] - 2025-12-26
 
 ### Added
 - **Auto-Rotation Resume**: The cube now automatically resumes rotation after manual user interaction (mouse manipulation) ends.
@@ -13,7 +13,9 @@ All notable changes to this project will be documented in this file.
     - **Gold**
     - **Steel**
     - **Titanium**
+- **Background Color**: Changed background clear color to graphite for better visual aesthetics.
 - **UI Improvements**: Positioning of material text overlay has been verified for readability.
+- **Window Resolution**: Restored default window size to 1280x720.
 
 ### Removed
 - **Glass Material**: Removed the "Glass" material from the demo cycle to focus on opaque metallic rendering.

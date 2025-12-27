@@ -72,7 +72,7 @@ begin
   VulkanDebugging:=true;
   VulkanValidation:=true;
  end;
- Title:='PasCube 1.6.0';
+ Title:='PasCube 1.6.1';
  PathName:='PasCube';
  StartScreen:=TPasCubeScreen;
  VisibleMouseCursor:=true;
@@ -86,8 +86,8 @@ begin
  VulkanAPIVersion:=VK_API_VERSION_1_0;
  Blocking:=true;
  PresentMode:=TpvApplicationPresentMode.VSync;
- Width:=500;
- Height:=500;
+ Width:=1280;
+ Height:=720;
  fTextOverlay:=TTextOverlay.Create;
 end;
 
