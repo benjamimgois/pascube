@@ -2,7 +2,7 @@
 pkgname=pascube-git
 pkgver=1.6.1.r2.gc5b5a77
 pkgrel=1
-pkgdesc="A simple OpenGL spinning cube written in Pascal (Lazarus/Qt6)"
+pkgdesc="A simple Vulkan spinning cube written in Pascal (Lazarus/Qt6)"
 arch=('x86_64')
 url="https://github.com/benjamimgois/pascube"
 license=('GPL-2.0-or-later')
