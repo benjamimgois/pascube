@@ -1,4 +1,4 @@
-# pasCube
-A simple opengl spinning cube in pascal
+# PasCube
+A simple vulkan spinning cube in pascal
 
-[Gravar a tela_20251006_091816.webm](https://github.com/user-attachments/assets/b275b6aa-b9eb-4f79-82e5-1bba9562edb6)
+<img width="1277" height="777" alt="image" src="https://github.com/user-attachments/assets/1abc218c-5e75-4c01-88e4-39e673ed1e8c" />
