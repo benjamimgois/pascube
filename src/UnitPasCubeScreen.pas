@@ -30,6 +30,7 @@ uses SysUtils,
 
 const CountTextures=4;
 
+
 type PScreenExampleCubeUniformBuffer=^TScreenExampleCubeUniformBuffer;
      TScreenExampleCubeUniformBuffer=record
       ModelViewProjectionMatrix:TpvMatrix4x4;
@@ -69,12 +70,16 @@ type PScreenExampleCubeUniformBuffer=^TScreenExampleCubeUniformBuffer;
        fVulkanDescriptorPool:TpvVulkanDescriptorPool;
        fVulkanDescriptorSetLayout:TpvVulkanDescriptorSetLayout;
        fVulkanDescriptorSets:array[0..MaxInFlightFrames-1,0..CountTextures-1] of TpvVulkanDescriptorSet;
+       fFaceDescriptorSets:array[0..MaxInFlightFrames-1,0..5] of TpvVulkanDescriptorSet; // Per-face overlay
        fVulkanPipelineLayout:TpvVulkanPipelineLayout;
        fVulkanCommandPool:TpvVulkanCommandPool;
        fVulkanRenderCommandBuffers:array[0..MaxInFlightFrames-1] of array of TpvVulkanCommandBuffer;
        fVulkanRenderSemaphores:array[0..MaxInFlightFrames-1] of TpvVulkanSemaphore;
        fUniformBuffer:TScreenExampleCubeUniformBuffer;
        fBoxAlbedoTextures:array[0..CountTextures-1] of TpvVulkanTexture;
+       fOverlayTextures:array of TpvVulkanTexture; // Dynamic array
+       fOverlayTextureNames:TStringList;
+       fFaceOverlayIndices:array[0..5] of Integer; // Random texture index for each face
        fReady:boolean;
        fState:TScreenExampleCubeState;
        fStates:TScreenExampleCubeStates;
@@ -192,8 +197,38 @@ const CubeVertices:array[0..23] of TVertex=
       Offsets:array[0..0] of TVkDeviceSize=(0);
 
 constructor TPasCubeScreen.Create;
+var SearchRec:TSearchRec;
+    BasePath,TexturesPath:String;
 begin
  inherited Create;
+ fOverlayTextureNames:=TStringList.Create;
+
+ // Find assets directory
+ BasePath:=IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))+'assets';
+ if not DirectoryExists(BasePath) then begin
+  BasePath:=ExpandFileName(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))+'../share/pascube/assets');
+ end;
+
+ TexturesPath:=IncludeTrailingPathDelimiter(BasePath)+'textures';
+ 
+ if FindFirst(IncludeTrailingPathDelimiter(TexturesPath)+'*.png',faAnyFile,SearchRec)=0 then begin
+  repeat
+   if (SearchRec.Name<>'.') and (SearchRec.Name<>'..') and
+      (SearchRec.Name<>'box_albedo.png') and
+      (SearchRec.Name<>'box_normalmap_heightmap.png') and
+      (SearchRec.Name<>'metal.png') and
+      (SearchRec.Name<>'reflection.png') and
+      (SearchRec.Name<>'treeleafs.jpg') then begin
+     fOverlayTextureNames.Add('textures/'+SearchRec.Name);
+   end;
+  until FindNext(SearchRec)<>0;
+  FindClose(SearchRec);
+ end;
+
+ if fOverlayTextureNames.Count=0 then begin
+  fOverlayTextureNames.Add('textures/icon_overlay.png'); // Fallback
+ end;
+ 
  fMouseLeftButtonDown:=false;
  fLastMousePosition:=TpvVector2.Create(0.0,0.0);
  fAutoRotation:=true;
@@ -204,12 +239,16 @@ end;
 
 destructor TPasCubeScreen.Destroy;
 begin
+ FreeAndNil(fOverlayTextureNames);
  inherited Destroy;
 end;
 
 procedure TPasCubeScreen.Show;
 var Stream:TStream;
     Index,SwapChainImageIndex:TpvInt32;
+    ShuffledIndices:array[0..5] of Integer;
+    AvailableIndices:array of Integer;
+    i,RandomIndex,Temp:Integer;
 begin
  inherited Show;
 
@@ -278,6 +317,65 @@ begin
    fBoxAlbedoTextures[Index].UpdateSampler;
   end;
 
+ // Load all overlay textures
+ SetLength(fOverlayTextures,fOverlayTextureNames.Count);
+ for Index:=0 to fOverlayTextureNames.Count-1 do begin
+  Stream:=pvApplication.Assets.GetAssetStream(fOverlayTextureNames[Index]);
+  try
+   fOverlayTextures[Index]:=TpvVulkanTexture.CreateFromImage(pvApplication.VulkanDevice,
+                                                             pvApplication.VulkanDevice.GraphicsQueue,
+                                                             fVulkanGraphicsCommandBuffer,
+                                                             fVulkanGraphicsCommandBufferFence,
+                                                             pvApplication.VulkanDevice.TransferQueue,
+                                                             fVulkanTransferCommandBuffer,
+                                                             fVulkanTransferCommandBufferFence,
+                                                             Stream,
+                                                             true,
+                                                             true);
+  finally
+   Stream.Free;
+  end;
+  fOverlayTextures[Index].WrapModeU:=TpvVulkanTextureWrapMode.ClampToEdge;
+  fOverlayTextures[Index].WrapModeV:=TpvVulkanTextureWrapMode.ClampToEdge;
+  fOverlayTextures[Index].WrapModeW:=TpvVulkanTextureWrapMode.ClampToEdge;
+  fOverlayTextures[Index].BorderColor:=VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
+  fOverlayTextures[Index].UpdateSampler;
+ end;
+
+ // Assign unique overlay textures to each of the 6 cube faces (avoiding repetitions)
+ Randomize;
+ if fOverlayTextureNames.Count >= 6 then begin
+  // We have enough textures, shuffle and assign unique ones
+  // Create a pool of available texture indices
+  SetLength(AvailableIndices, fOverlayTextureNames.Count);
+  for i := 0 to fOverlayTextureNames.Count - 1 do begin
+   AvailableIndices[i] := i;
+  end;
+  
+  // Fisher-Yates shuffle and pick first 6
+  for i := 0 to 5 do begin
+   RandomIndex := i + Random(Length(AvailableIndices) - i);
+   ShuffledIndices[i] := AvailableIndices[RandomIndex];
+   // Swap
+   Temp := AvailableIndices[i];
+   AvailableIndices[i] := AvailableIndices[RandomIndex];
+   AvailableIndices[RandomIndex] := Temp;
+  end;
+  
+  // Assign the shuffled indices to faces
+  for i := 0 to 5 do begin
+   fFaceOverlayIndices[i] := ShuffledIndices[i];
+  end;
+ end else begin
+  // Not enough textures, just assign what we have sequentially with some randomization
+  for Index := 0 to 5 do begin
+   if Index < fOverlayTextureNames.Count then
+    fFaceOverlayIndices[Index] := Index
+   else
+    fFaceOverlayIndices[Index] := Random(fOverlayTextureNames.Count);
+  end;
+ end;
+
  fVulkanPipelineShaderStageCubeVertex:=TpvVulkanPipelineShaderStage.Create(VK_SHADER_STAGE_VERTEX_BIT,fCubeVertexShaderModule,'main');
 
  fVulkanPipelineShaderStageCubeFragment:=TpvVulkanPipelineShaderStage.Create(VK_SHADER_STAGE_FRAGMENT_BIT,fCubeFragmentShaderModule,'main');
@@ -343,9 +441,9 @@ begin
 
  fVulkanDescriptorPool:=TpvVulkanDescriptorPool.Create(pvApplication.VulkanDevice,
                                                        TVkDescriptorPoolCreateFlags(VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT),
-                                                       MaxInFlightFrames*CountTextures);
- fVulkanDescriptorPool.AddDescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,MaxInFlightFrames*CountTextures);
- fVulkanDescriptorPool.AddDescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,MaxInFlightFrames*CountTextures);
+                                                       MaxInFlightFrames*(CountTextures+6)); // +6 for face descriptor sets
+ fVulkanDescriptorPool.AddDescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,MaxInFlightFrames*(CountTextures+6));
+ fVulkanDescriptorPool.AddDescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,MaxInFlightFrames*(CountTextures+6)*2);
  fVulkanDescriptorPool.Initialize;
 
  fVulkanDescriptorSetLayout:=TpvVulkanDescriptorSetLayout.Create(pvApplication.VulkanDevice);
@@ -355,6 +453,11 @@ begin
                                        TVkShaderStageFlags(VK_SHADER_STAGE_VERTEX_BIT) or TVkShaderStageFlags(VK_SHADER_STAGE_FRAGMENT_BIT),
                                        []);
  fVulkanDescriptorSetLayout.AddBinding(1,
+                                       VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                                       1,
+                                       TVkShaderStageFlags(VK_SHADER_STAGE_FRAGMENT_BIT),
+                                       []);
+ fVulkanDescriptorSetLayout.AddBinding(2,
                                        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                                        1,
                                        TVkShaderStageFlags(VK_SHADER_STAGE_FRAGMENT_BIT),
@@ -383,7 +486,52 @@ begin
                                                                          [],
                                                                          false
                                                                         );
+   fVulkanDescriptorSets[Index,SwapChainImageIndex].WriteToDescriptorSet(2,
+                                                                         0,
+                                                                         1,
+                                                                         TVkDescriptorType(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER),
+                                                                         [fOverlayTextures[0].DescriptorImageInfo],
+                                                                         [],
+                                                                         [],
+                                                                         false
+                                                                        );
    fVulkanDescriptorSets[Index,SwapChainImageIndex].Flush;
+  end;
+ end;
+
+ // Create per-face descriptor sets with random overlay textures
+ for Index:=0 to MaxInFlightFrames-1 do begin
+  for SwapChainImageIndex:=0 to 5 do begin // 6 faces
+   fFaceDescriptorSets[Index,SwapChainImageIndex]:=TpvVulkanDescriptorSet.Create(fVulkanDescriptorPool,
+                                                                                 fVulkanDescriptorSetLayout);
+   fFaceDescriptorSets[Index,SwapChainImageIndex].WriteToDescriptorSet(0,
+                                                                       0,
+                                                                       1,
+                                                                       TVkDescriptorType(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER),
+                                                                       [],
+                                                                       [fVulkanUniformBuffers[Index].DescriptorBufferInfo],
+                                                                       [],
+                                                                       false
+                                                                      );
+   fFaceDescriptorSets[Index,SwapChainImageIndex].WriteToDescriptorSet(1,
+                                                                       0,
+                                                                       1,
+                                                                       TVkDescriptorType(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER),
+                                                                       [fBoxAlbedoTextures[0].DescriptorImageInfo],
+                                                                       [],
+                                                                       [],
+                                                                       false
+                                                                      );
+   fFaceDescriptorSets[Index,SwapChainImageIndex].WriteToDescriptorSet(2,
+                                                                       0,
+                                                                       1,
+                                                                       TVkDescriptorType(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER),
+                                                                       [fOverlayTextures[fFaceOverlayIndices[SwapChainImageIndex]].DescriptorImageInfo],
+                                                                       [],
+                                                                       [],
+                                                                       false
+                                                                      );
+   fFaceDescriptorSets[Index,SwapChainImageIndex].Flush;
   end;
  end;
 
@@ -403,6 +551,9 @@ begin
   for SwapChainImageIndex:=0 to CountTextures-1 do begin
    FreeAndNil(fVulkanDescriptorSets[Index,SwapChainImageIndex]);
   end;
+  for SwapChainImageIndex:=0 to 5 do begin
+   FreeAndNil(fFaceDescriptorSets[Index,SwapChainImageIndex]);
+  end;
  end;
  FreeAndNil(fVulkanDescriptorSetLayout);
  FreeAndNil(fVulkanDescriptorPool);
@@ -420,6 +571,10 @@ begin
   for Index:=0 to CountTextures-1 do begin
    FreeAndNil(fBoxAlbedoTextures[Index]);
   end;
+ for Index:=0 to length(fOverlayTextures)-1 do begin
+  FreeAndNil(fOverlayTextures[Index]);
+ end;
+ fOverlayTextures:=nil;
  for Index:=0 to MaxInFlightFrames-1 do begin
   for SwapChainImageIndex:=0 to length(fVulkanRenderCommandBuffers[Index])-1 do begin
    FreeAndNil(fVulkanRenderCommandBuffers[Index,SwapChainImageIndex]);
@@ -693,7 +848,7 @@ var p:pointer;
     ViewMatrix:TpvMatrix4x4;
     ProjectionMatrix:TpvMatrix4x4;
     State:PScreenExampleCubeState;
-    TextureIndex:TpvInt32;
+    TextureIndex,FaceIndex:TpvInt32;
     PushConstants:record 
                    Vector:TpvVector4; 
                    Params:TpvVector4;
@@ -771,15 +926,17 @@ begin
                                                                                                         SizeOf(TpvVector4)*2, // Send both vectors
                                                                                                         @PushConstants);
 
-  fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].CmdBindDescriptorSets(VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                                                                                               fVulkanPipelineLayout.Handle,
-                                                                                                               0,
-                                                                                                               1,
-                                                                                                               @fVulkanDescriptorSets[pvApplication.DrawInFlightFrameIndex,TextureIndex].Handle,
-                                                                                                               0,
-                                                                                                               nil);
-
-  fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].CmdDrawIndexed(length(CubeIndices),1,0,0,0);
+  // Draw each face with its assigned overlay texture
+  for FaceIndex:=0 to 5 do begin
+   fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].CmdBindDescriptorSets(VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                                                                                                fVulkanPipelineLayout.Handle,
+                                                                                                                0,
+                                                                                                                1,
+                                                                                                                @fFaceDescriptorSets[pvApplication.DrawInFlightFrameIndex,FaceIndex].Handle,
+                                                                                                                0,
+                                                                                                                nil);
+   fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].CmdDrawIndexed(6,1,FaceIndex*6,0,0);
+  end;
 
 
   fVulkanRenderPass.EndRenderPass(fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex]);

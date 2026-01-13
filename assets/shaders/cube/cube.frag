@@ -7,6 +7,7 @@ layout (location = 0) in vec3 inNormal;
 layout (location = 1) in vec2 inTexCoord;
 
 layout (binding = 1) uniform sampler2D samplerColor;
+layout (binding = 2) uniform sampler2D samplerOverlay;
 
 layout (push_constant) uniform PushConsts {
 	vec4 vector;
@@ -38,13 +39,25 @@ void main() {
     // Texture Sample
     vec4 texColor = texture(samplerColor, inTexCoord);
     
+    // Overlay Sample (icon texture) - scale to 50% size, centered
+    vec2 overlayUV = (inTexCoord - 0.5) * 2.0 + 0.5; // Scale UVs to make icon 50% smaller
+    vec4 overlayColor = vec4(0.0);
+    if (overlayUV.x >= 0.0 && overlayUV.x <= 1.0 && overlayUV.y >= 0.0 && overlayUV.y <= 1.0) {
+        overlayColor = texture(samplerOverlay, overlayUV);
+    }
+    float overlayAlpha = overlayColor.a * 0.25; // 25% opacity
+    
     // Combine
     vec3 lighting = (ambient + diffuse + specular);
     
     // Apply Tint (vector.rgb) to Texture
     vec3 tintedTex = texColor.rgb * pushConsts.vector.rgb;
     
-    vec3 finalColor = lighting * tintedTex;
+    // Material color with lighting
+    vec3 materialColor = lighting * tintedTex;
+    
+    // Blend overlay on top (using overlay's alpha)
+    vec3 finalColor = mix(materialColor, overlayColor.rgb, overlayAlpha);
     
     // Output
     outColor = vec4(finalColor, pushConsts.vector.a);

@@ -7921,6 +7921,8 @@ begin
 end;
 
 constructor TpvApplicationAssets.Create(const aVulkanApplication:TpvApplication);
+var
+ ExePath,TestPath:String;
 begin
  inherited Create;
  fVulkanApplication:=aVulkanApplication;
@@ -7933,7 +7935,17 @@ begin
 {$elseif defined(PasVulkanUseRelativeDirectory)}
  fBasePath:=TpvUTF8String(IncludeTrailingPathDelimiter(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))+'assets'));
 {$else}
- fBasePath:=TpvUTF8String(IncludeTrailingPathDelimiter(ExpandFileName(IncludeTrailingPathDelimiter(IncludeTrailingPathDelimiter(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))+'..')+'assets'))));
+ // Flexible asset path resolution:
+ // Priority 1: assets folder next to executable (for development)
+ // Priority 2: ../share/pascube/assets relative to executable (for installed packages)
+ ExePath:=ExtractFilePath(ParamStr(0));
+ TestPath:=IncludeTrailingPathDelimiter(ExePath+'assets');
+ if DirectoryExists(TestPath) then begin
+  fBasePath:=TpvUTF8String(TestPath);
+ end else begin
+  TestPath:=IncludeTrailingPathDelimiter(ExpandFileName(ExePath+'..'+PathDelim+'share'+PathDelim+'pascube'+PathDelim+'assets'));
+  fBasePath:=TpvUTF8String(TestPath);
+ end;
 {$ifend}
 end;
 

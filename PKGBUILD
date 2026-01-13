@@ -72,22 +72,17 @@ package() {
   cd "${pkgname%-git}"
 
   # Read binary path detected during build()
-  BIN_PATH="$(< .built_binary_path)"
+  BIN_PATH="$(<.built_binary_path)"
   [[ -x "${BIN_PATH}" ]] || { echo "Error: built binary not executable: ${BIN_PATH}"; exit 1; }
 
-  # Install the real binary under /usr/lib/pascube/bin
-  install -Dm755 "${BIN_PATH}" "${pkgdir}/usr/lib/${pkgname%-git}/bin/${pkgname%-git}"
+  # Install binary directly to /usr/bin (no wrapper needed)
+  install -Dm755 "${BIN_PATH}" "${pkgdir}/usr/bin/${pkgname%-git}"
 
-  # Install assets into /usr/lib/pascube/assets
-  # We assume 'assets' is a directory in the build root
-  cp -a assets "${pkgdir}/usr/lib/${pkgname%-git}/"
-
-  # Wrapper: force X11 via xcb
-  install -Dm755 /dev/stdin "${pkgdir}/usr/bin/${pkgname%-git}" <<'EOF'
-#!/bin/sh
-export QT_QPA_PLATFORM=xcb
-exec /usr/lib/pascube/bin/pascube "$@"
-EOF
+  # Install assets into /usr/share/pascube/assets
+  # The app looks for assets at: <exe_dir>/../share/pascube/assets
+  # When exe is in /usr/bin, this resolves to /usr/share/pascube/assets
+  install -dm755 "${pkgdir}/usr/share/${pkgname%-git}"
+  cp -a assets "${pkgdir}/usr/share/${pkgname%-git}/"
 
   # ---- Desktop entry ----
   # If data/pascube.desktop exists, normalize Icon and Exec and install it
