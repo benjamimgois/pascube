@@ -819,14 +819,22 @@ begin
 end;
 
 procedure TPasCubeScreen.Update(const aDeltaTime:TpvDouble);
-const f0=1.0/(2.0*pi);
-      f1=0.5/(2.0*pi);
+const f0=2.5/(2.0*pi);  // 2.5x rotation speed
+      f1=1.25/(2.0*pi); // 2.5x rotation speed
+      MaxFPS=120.0; // Maximum FPS for full rotation speed
+var SpeedMultiplier:TpvDouble;
 begin
  inherited Update(aDeltaTime);
  if fAutoRotation then begin
+  // Calculate speed multiplier based on current FPS (0.0 to 1.0)
+  // At 360 FPS = 1.0 (max speed), at 180 FPS = 0.5, at 60 FPS = 0.167
+  SpeedMultiplier:=pvApplication.FramesPerSecond/MaxFPS;
+  if SpeedMultiplier>1.0 then SpeedMultiplier:=1.0; // Clamp to max
+  if SpeedMultiplier<0.0 then SpeedMultiplier:=0.0; // Prevent negative
+  
   fState.Time:=fState.Time+aDeltaTime;
-  fState.AnglePhases[0]:=frac(fState.AnglePhases[0]+(aDeltaTime*f0));
-  fState.AnglePhases[1]:=frac(fState.AnglePhases[1]+(aDeltaTime*f1));
+  fState.AnglePhases[0]:=frac(fState.AnglePhases[0]+(aDeltaTime*f0*SpeedMultiplier));
+  fState.AnglePhases[1]:=frac(fState.AnglePhases[1]+(aDeltaTime*f1*SpeedMultiplier));
  end;
  fStates[pvApplication.UpdateInFlightFrameIndex]:=fState;
  fReady:=true;
