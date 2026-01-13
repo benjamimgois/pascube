@@ -39,8 +39,8 @@ void main() {
     // Texture Sample
     vec4 texColor = texture(samplerColor, inTexCoord);
     
-    // Overlay Sample (icon texture) - scale to 50% size, centered
-    vec2 overlayUV = (inTexCoord - 0.5) * 2.0 + 0.5; // Scale UVs to make icon 50% smaller
+    // Overlay Sample (icon texture) - scale to 75% size, centered
+    vec2 overlayUV = (inTexCoord - 0.5) * 1.333 + 0.5; // Scale UVs to make icon 75% size
     vec4 overlayColor = vec4(0.0);
     if (overlayUV.x >= 0.0 && overlayUV.x <= 1.0 && overlayUV.y >= 0.0 && overlayUV.y <= 1.0) {
         overlayColor = texture(samplerOverlay, overlayUV);

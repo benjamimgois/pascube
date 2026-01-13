@@ -63,8 +63,7 @@ assets/*/old/
 ###################
 # Scripts & Tools
 ###################
-# Utility scripts (optional, comment out if you want to commit them)
-resize_textures.sh
+# Utility scripts backup files
 *.sh.bak
 
 ###################
