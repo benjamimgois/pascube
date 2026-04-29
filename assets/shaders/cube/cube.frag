@@ -7,7 +7,6 @@ layout (location = 0) in vec3 inNormal;
 layout (location = 1) in vec2 inTexCoord;
 
 layout (binding = 1) uniform sampler2D samplerColor;
-layout (binding = 2) uniform sampler2D samplerOverlay;
 
 layout (push_constant) uniform PushConsts {
 	vec4 vector;
@@ -36,28 +35,36 @@ void main() {
     float spec = pow(max(dot(N, H), 0.0), shininess);
     vec3 specular = specularStrength * spec * vec3(1.0);
     
-    // Texture Sample
+    // Texture sample
     vec4 texColor = texture(samplerColor, inTexCoord);
     
-    // Overlay Sample (icon texture) - scale to 75% size, centered
-    vec2 overlayUV = (inTexCoord - 0.5) * 1.333 + 0.5; // Scale UVs to make icon 75% size
-    vec4 overlayColor = vec4(0.0);
-    if (overlayUV.x >= 0.0 && overlayUV.x <= 1.0 && overlayUV.y >= 0.0 && overlayUV.y <= 1.0) {
-        overlayColor = texture(samplerOverlay, overlayUV);
-    }
-    float overlayAlpha = overlayColor.a * 0.25; // 25% opacity
+    // Brushed steel effect: subtle horizontal streaks
+    float brushFreq = 80.0;
+    float brush = sin(inTexCoord.y * brushFreq) * 0.04 + 0.96;
+    // Add finer noise-like variation
+    float fineBrush = sin(inTexCoord.y * brushFreq * 3.7 + inTexCoord.x * 20.0) * 0.02 + 0.98;
     
-    // Combine
+    // Combine lighting
     vec3 lighting = (ambient + diffuse + specular);
     
-    // Apply Tint (vector.rgb) to Texture
-    vec3 tintedTex = texColor.rgb * pushConsts.vector.rgb;
+    // Apply steel tint to texture with brushed effect
+    vec3 tintedTex = texColor.rgb * pushConsts.vector.rgb * brush * fineBrush;
     
     // Material color with lighting
     vec3 materialColor = lighting * tintedTex;
     
-    // Blend overlay on top (using overlay's alpha)
-    vec3 finalColor = mix(materialColor, overlayColor.rgb, overlayAlpha);
+    // Edge detection: darken near UV borders to show cube edges
+    float edgeThickness = 0.015;
+    float edgeX = min(inTexCoord.x, 1.0 - inTexCoord.x);
+    float edgeY = min(inTexCoord.y, 1.0 - inTexCoord.y);
+    float edgeDist = min(edgeX, edgeY);
+    float edgeFactor = smoothstep(0.0, edgeThickness, edgeDist);
+    
+    // Dark edge color
+    vec3 edgeColor = vec3(0.08, 0.08, 0.10);
+    
+    // Blend edge
+    vec3 finalColor = mix(edgeColor, materialColor, edgeFactor);
     
     // Output
     outColor = vec4(finalColor, pushConsts.vector.a);
