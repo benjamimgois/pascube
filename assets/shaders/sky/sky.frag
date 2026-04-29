@@ -7,67 +7,65 @@ layout (location = 0) in vec2 inUV;
 
 layout (location = 0) out vec4 outColor;
 
-// Hash function for pseudo-random numbers
 float hash(vec2 p) {
     vec3 p3 = fract(vec3(p.xyx) * 0.1031);
     p3 += dot(p3, p3.yzx + 33.33);
     return fract((p3.x + p3.y) * p3.z);
 }
 
-// 2D noise
 float noise(vec2 p) {
     vec2 i = floor(p);
     vec2 f = fract(p);
     f = f * f * (3.0 - 2.0 * f);
-    
     float a = hash(i);
     float b = hash(i + vec2(1.0, 0.0));
     float c = hash(i + vec2(0.0, 1.0));
     float d = hash(i + vec2(1.0, 1.0));
-    
     return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+float fbm(vec2 p) {
+    float value = 0.0;
+    float amplitude = 0.5;
+    for (int i = 0; i < 5; i++) {
+        value += amplitude * noise(p);
+        p *= 2.0;
+        amplitude *= 0.5;
+    }
+    return value;
 }
 
 void main() {
     vec2 uv = inUV;
     
-    // Night sky gradient: dark blue/purple at top, darker at bottom
-    vec3 skyTop = vec3(0.02, 0.02, 0.08);      // Very dark blue
-    vec3 skyMid = vec3(0.04, 0.03, 0.10);      // Dark purple-blue
-    vec3 skyHorizon = vec3(0.06, 0.04, 0.12);  // Slightly lighter near horizon
+    // Very dark space base
+    vec3 spaceDark = vec3(0.01, 0.01, 0.02);
     
-    // City glow on horizon (warm orange/red)
-    vec3 cityGlow = vec3(0.8, 0.3, 0.1);
+    // Subtle nebula: blue-gray tones
+    vec3 nebula1 = vec3(0.06, 0.07, 0.12); // Cool blue-gray
+    vec3 nebula2 = vec3(0.08, 0.06, 0.10); // Purple-gray
     
-    float t = uv.y;
+    // Nebula noise clouds
+    float n1 = fbm(uv * 3.0 + vec2(0.5, 0.2));
+    float n2 = fbm(uv * 2.5 - vec2(0.3, 0.7));
     
-    // Base sky gradient
-    vec3 color;
-    if (t > 0.3) {
-        color = mix(skyMid, skyTop, (t - 0.3) / 0.7);
-    } else {
-        color = mix(skyHorizon, skyMid, t / 0.3);
-    }
+    // Mix nebula colors softly
+    vec3 nebulaColor = mix(nebula1, nebula2, n2);
+    float nebulaMask = smoothstep(0.3, 0.7, n1) * 0.6;
     
-    // City glow band near horizon (bottom of screen)
-    float glowIntensity = smoothstep(0.15, 0.0, t) * 0.15;
-    // Add some variation to the glow
-    float glowVar = noise(vec2(uv.x * 8.0, 0.0)) * 0.5 + 0.5;
-    color += cityGlow * glowIntensity * glowVar;
+    vec3 color = mix(spaceDark, nebulaColor, nebulaMask);
     
-    // Stars
-    float starNoise = hash(uv * 400.0);
-    float star = smoothstep(0.998, 1.0, starNoise);
-    // Make stars twinkle slightly based on position
-    float twinkle = sin(hash(uv * 100.0) * 100.0) * 0.3 + 0.7;
-    color += vec3(0.9, 0.95, 1.0) * star * twinkle * 0.8;
+    // Very subtle stars (distant, small)
+    float starField = hash(uv * 350.0);
+    float star = smoothstep(0.996, 1.0, starField);
+    color += vec3(0.85, 0.9, 1.0) * star * 0.5;
     
-    // Distant city lights (small scattered points near horizon)
-    float cityLights = hash(uv * 120.0);
-    float light = smoothstep(0.992, 0.998, cityLights) * smoothstep(0.12, 0.0, t);
-    color += vec3(1.0, 0.8, 0.5) * light * 0.6;
+    // Larger, brighter stars (fewer)
+    float brightStarField = hash(uv * 90.0);
+    float brightStar = smoothstep(0.992, 1.0, brightStarField);
+    color += vec3(1.0, 1.0, 1.0) * brightStar * 0.7;
     
-    // Vignette (darker corners)
+    // Vignette
     vec2 vignetteUV = uv * (1.0 - uv);
     float vignette = vignetteUV.x * vignetteUV.y * 15.0;
     color *= clamp(vignette, 0.0, 1.0);

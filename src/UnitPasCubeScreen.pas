@@ -849,9 +849,9 @@ begin
    fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].CmdBindVertexBuffers(0,1,@fVulkanVertexBuffer.Handle,@Offsets);
    fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].CmdBindIndexBuffer(fVulkanIndexBuffer.Handle,0,VK_INDEX_TYPE_UINT32);
 
-   // Steel material only
-   PushConstants.Vector:=TpvVector4.Create(0.8, 0.8, 0.9, 1.0);
-   PushConstants.Params:=TpvVector4.Create(0.9, 0.9, 64.0, 0.0);
+   // Brighter cartoon steel material
+   PushConstants.Vector:=TpvVector4.Create(0.92, 0.93, 0.98, 1.0);
+   PushConstants.Params:=TpvVector4.Create(0.85, 0.7, 24.0, 0.0);
 
    // Bind Standard Pipeline
    fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].CmdBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS,fVulkanGraphicsPipeline.Handle);
