@@ -75,7 +75,14 @@ type PScreenExampleCubeUniformBuffer=^TScreenExampleCubeUniformBuffer;
        fVulkanRenderCommandBuffers:array[0..MaxInFlightFrames-1] of array of TpvVulkanCommandBuffer;
        fVulkanRenderSemaphores:array[0..MaxInFlightFrames-1] of TpvVulkanSemaphore;
        fUniformBuffer:TScreenExampleCubeUniformBuffer;
-       fBoxAlbedoTexture:TpvVulkanTexture;
+        fBoxAlbedoTexture:TpvVulkanTexture;
+        fSkyVertexShaderModule:TpvVulkanShaderModule;
+        fSkyFragmentShaderModule:TpvVulkanShaderModule;
+        fSkyPipelineShaderStageVertex:TpvVulkanPipelineShaderStage;
+        fSkyPipelineShaderStageFragment:TpvVulkanPipelineShaderStage;
+        fSkyGraphicsPipeline:TpvVulkanGraphicsPipeline;
+        fSkyPipelineLayout:TpvVulkanPipelineLayout;
+        fSkyVertexBuffer:TpvVulkanBuffer;
         fReady:boolean;
        fState:TScreenExampleCubeState;
        fStates:TScreenExampleCubeStates;
@@ -117,14 +124,20 @@ implementation
 
 uses UnitPasCubeApplication, UnitTextOverlay;
 
-type PVertex=^TVertex;
-     TVertex=record
-      Position:TpvVector3;
-      Tangent:TpvVector3;
-      Bitangent:TpvVector3;
-      Normal:TpvVector3;
-      TexCoord:TpvVector2;
-     end;
+ type PVertex=^TVertex;
+      TVertex=record
+       Position:TpvVector3;
+       Tangent:TpvVector3;
+       Bitangent:TpvVector3;
+       Normal:TpvVector3;
+       TexCoord:TpvVector2;
+      end;
+
+      PSkyVertex=^TSkyVertex;
+      TSkyVertex=record
+       Position:TpvVector2;
+       TexCoord:TpvVector2;
+      end;
 
 const CubeVertices:array[0..23] of TVertex=
        (// Left
@@ -165,30 +178,37 @@ const CubeVertices:array[0..23] of TVertex=
 
        );
 
-      CubeIndices:array[0..35] of TpvInt32=
-       ( // Left
-         0, 1, 2,
-         0, 2, 3,
+       CubeIndices:array[0..35] of TpvInt32=
+        ( // Left
+          0, 1, 2,
+          0, 2, 3,
 
-         // Right
-         4, 5, 6,
-         4, 6, 7,
+          // Right
+          4, 5, 6,
+          4, 6, 7,
 
-         // Bottom
-         8, 9, 10,
-         8, 10, 11,
+          // Bottom
+          8, 9, 10,
+          8, 10, 11,
 
-         // Top
-         12, 13, 14,
-         12, 14, 15,
+          // Top
+          12, 13, 14,
+          12, 14, 15,
 
-         // Back
-         16, 17, 18,
-         16, 18, 19,
+          // Back
+          16, 17, 18,
+          16, 18, 19,
 
-         // Front
-         20, 21, 22,
-         20, 22, 23);
+          // Front
+          20, 21, 22,
+          20, 22, 23);
+
+      SkyVertices:array[0..2] of TSkyVertex=
+       (
+        (Position:(x:-1.0;y:-1.0);TexCoord:(x:0.0;y:0.0)),
+        (Position:(x: 3.0;y:-1.0);TexCoord:(x:2.0;y:0.0)),
+        (Position:(x:-1.0;y: 3.0);TexCoord:(x:0.0;y:2.0))
+       );
 
       Offsets:array[0..0] of TVkDeviceSize=(0);
 
@@ -276,11 +296,46 @@ begin
   fBoxAlbedoTexture.BorderColor:=VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
   fBoxAlbedoTexture.UpdateSampler;
 
-  fVulkanPipelineShaderStageCubeVertex:=TpvVulkanPipelineShaderStage.Create(VK_SHADER_STAGE_VERTEX_BIT,fCubeVertexShaderModule,'main');
+   fVulkanPipelineShaderStageCubeVertex:=TpvVulkanPipelineShaderStage.Create(VK_SHADER_STAGE_VERTEX_BIT,fCubeVertexShaderModule,'main');
 
- fVulkanPipelineShaderStageCubeFragment:=TpvVulkanPipelineShaderStage.Create(VK_SHADER_STAGE_FRAGMENT_BIT,fCubeFragmentShaderModule,'main');
+  fVulkanPipelineShaderStageCubeFragment:=TpvVulkanPipelineShaderStage.Create(VK_SHADER_STAGE_FRAGMENT_BIT,fCubeFragmentShaderModule,'main');
 
- fVulkanGraphicsPipeline:=nil;
+  Stream:=pvApplication.Assets.GetAssetStream('shaders/sky/sky_vert.spv');
+  try
+   fSkyVertexShaderModule:=TpvVulkanShaderModule.Create(pvApplication.VulkanDevice,Stream);
+  finally
+   Stream.Free;
+  end;
+
+  Stream:=pvApplication.Assets.GetAssetStream('shaders/sky/sky_frag.spv');
+  try
+   fSkyFragmentShaderModule:=TpvVulkanShaderModule.Create(pvApplication.VulkanDevice,Stream);
+  finally
+   Stream.Free;
+  end;
+
+  fSkyPipelineShaderStageVertex:=TpvVulkanPipelineShaderStage.Create(VK_SHADER_STAGE_VERTEX_BIT,fSkyVertexShaderModule,'main');
+  fSkyPipelineShaderStageFragment:=TpvVulkanPipelineShaderStage.Create(VK_SHADER_STAGE_FRAGMENT_BIT,fSkyFragmentShaderModule,'main');
+
+  fSkyVertexBuffer:=TpvVulkanBuffer.Create(pvApplication.VulkanDevice,
+                                           SizeOf(SkyVertices),
+                                           TVkBufferUsageFlags(VK_BUFFER_USAGE_TRANSFER_DST_BIT) or TVkBufferUsageFlags(VK_BUFFER_USAGE_VERTEX_BUFFER_BIT),
+                                           TVkSharingMode(VK_SHARING_MODE_EXCLUSIVE),
+                                           [],
+                                           TVkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
+  fSkyVertexBuffer.UploadData(pvApplication.VulkanDevice.TransferQueue,
+                              fVulkanTransferCommandBuffer,
+                              fVulkanTransferCommandBufferFence,
+                              SkyVertices,
+                              0,
+                              SizeOf(SkyVertices),
+                              TpvVulkanBufferUseTemporaryStagingBufferMode.Yes);
+
+  fSkyPipelineLayout:=TpvVulkanPipelineLayout.Create(pvApplication.VulkanDevice);
+  fSkyPipelineLayout.Initialize;
+
+  fVulkanGraphicsPipeline:=nil;
+  fSkyGraphicsPipeline:=nil;
 
  fVulkanRenderPass:=nil;
 
@@ -412,6 +467,13 @@ begin
   FreeAndNil(fCubeFragmentShaderModule);
   FreeAndNil(fCubeVertexShaderModule);
   FreeAndNil(fBoxAlbedoTexture);
+  FreeAndNil(fSkyGraphicsPipeline);
+  FreeAndNil(fSkyPipelineShaderStageFragment);
+  FreeAndNil(fSkyPipelineShaderStageVertex);
+  FreeAndNil(fSkyFragmentShaderModule);
+  FreeAndNil(fSkyVertexShaderModule);
+  FreeAndNil(fSkyPipelineLayout);
+  FreeAndNil(fSkyVertexBuffer);
   for Index:=0 to MaxInFlightFrames-1 do begin
   for SwapChainImageIndex:=0 to length(fVulkanRenderCommandBuffers[Index])-1 do begin
    FreeAndNil(fVulkanRenderCommandBuffers[Index,SwapChainImageIndex]);
@@ -452,6 +514,7 @@ begin
 
   FreeAndNil(fVulkanRenderPass);
   FreeAndNil(fVulkanGraphicsPipeline);
+  FreeAndNil(fSkyGraphicsPipeline);
 
   fVulkanRenderPass:=TpvVulkanRenderPass.Create(pvApplication.VulkanDevice);
 
@@ -573,11 +636,67 @@ begin
  fVulkanGraphicsPipeline.DepthStencilState.DepthBoundsTestEnable:=false;
  fVulkanGraphicsPipeline.DepthStencilState.StencilTestEnable:=false;
 
-  fVulkanGraphicsPipeline.Initialize;
- 
-  fVulkanGraphicsPipeline.FreeMemory;
- 
-  for Index:=0 to pvApplication.CountInFlightFrames-1 do begin
+   fVulkanGraphicsPipeline.Initialize;
+
+   fVulkanGraphicsPipeline.FreeMemory;
+
+   fSkyGraphicsPipeline:=TpvVulkanGraphicsPipeline.Create(pvApplication.VulkanDevice,
+                                                          pvApplication.VulkanPipelineCache,
+                                                          0,
+                                                          [],
+                                                          fSkyPipelineLayout,
+                                                          fVulkanRenderPass,
+                                                          0,
+                                                          nil,
+                                                          0);
+
+   fSkyGraphicsPipeline.AddStage(fSkyPipelineShaderStageVertex);
+   fSkyGraphicsPipeline.AddStage(fSkyPipelineShaderStageFragment);
+
+   fSkyGraphicsPipeline.InputAssemblyState.Topology:=VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+   fSkyGraphicsPipeline.InputAssemblyState.PrimitiveRestartEnable:=false;
+
+   fSkyGraphicsPipeline.VertexInputState.AddVertexInputBindingDescription(0,SizeOf(TSkyVertex),VK_VERTEX_INPUT_RATE_VERTEX);
+   fSkyGraphicsPipeline.VertexInputState.AddVertexInputAttributeDescription(0,0,VK_FORMAT_R32G32_SFLOAT,TVkPtrUInt(pointer(@PSkyVertex(nil)^.Position)));
+   fSkyGraphicsPipeline.VertexInputState.AddVertexInputAttributeDescription(1,0,VK_FORMAT_R32G32_SFLOAT,TVkPtrUInt(pointer(@PSkyVertex(nil)^.TexCoord)));
+
+   fSkyGraphicsPipeline.ViewPortState.AddViewPort(0.0,0.0,pvApplication.VulkanSwapChain.Width,pvApplication.VulkanSwapChain.Height,0.0,1.0);
+   fSkyGraphicsPipeline.ViewPortState.AddScissor(0,0,pvApplication.VulkanSwapChain.Width,pvApplication.VulkanSwapChain.Height);
+
+   fSkyGraphicsPipeline.RasterizationState.DepthClampEnable:=false;
+   fSkyGraphicsPipeline.RasterizationState.RasterizerDiscardEnable:=false;
+   fSkyGraphicsPipeline.RasterizationState.PolygonMode:=VK_POLYGON_MODE_FILL;
+   fSkyGraphicsPipeline.RasterizationState.CullMode:=TVkCullModeFlags(VK_CULL_MODE_NONE);
+   fSkyGraphicsPipeline.RasterizationState.FrontFace:=VK_FRONT_FACE_COUNTER_CLOCKWISE;
+   fSkyGraphicsPipeline.RasterizationState.DepthBiasEnable:=false;
+   fSkyGraphicsPipeline.RasterizationState.LineWidth:=1.0;
+
+   fSkyGraphicsPipeline.MultisampleState.RasterizationSamples:=VK_SAMPLE_COUNT_1_BIT;
+   fSkyGraphicsPipeline.MultisampleState.SampleShadingEnable:=false;
+
+   fSkyGraphicsPipeline.ColorBlendState.LogicOpEnable:=false;
+   fSkyGraphicsPipeline.ColorBlendState.AddColorBlendAttachmentState(false,
+                                                                     VK_BLEND_FACTOR_ONE,
+                                                                     VK_BLEND_FACTOR_ZERO,
+                                                                     VK_BLEND_OP_ADD,
+                                                                     VK_BLEND_FACTOR_ONE,
+                                                                     VK_BLEND_FACTOR_ZERO,
+                                                                     VK_BLEND_OP_ADD,
+                                                                     TVkColorComponentFlags(VK_COLOR_COMPONENT_R_BIT) or
+                                                                     TVkColorComponentFlags(VK_COLOR_COMPONENT_G_BIT) or
+                                                                     TVkColorComponentFlags(VK_COLOR_COMPONENT_B_BIT) or
+                                                                     TVkColorComponentFlags(VK_COLOR_COMPONENT_A_BIT));
+
+   fSkyGraphicsPipeline.DepthStencilState.DepthTestEnable:=false;
+   fSkyGraphicsPipeline.DepthStencilState.DepthWriteEnable:=false;
+   fSkyGraphicsPipeline.DepthStencilState.DepthCompareOp:=VK_COMPARE_OP_ALWAYS;
+   fSkyGraphicsPipeline.DepthStencilState.DepthBoundsTestEnable:=false;
+   fSkyGraphicsPipeline.DepthStencilState.StencilTestEnable:=false;
+
+   fSkyGraphicsPipeline.Initialize;
+   fSkyGraphicsPipeline.FreeMemory;
+
+   for Index:=0 to pvApplication.CountInFlightFrames-1 do begin
 
   for SwapChainImageIndex:=0 to length(fVulkanRenderCommandBuffers[Index])-1 do begin
    FreeAndNil(fVulkanRenderCommandBuffers[Index,SwapChainImageIndex]);
@@ -601,6 +720,7 @@ procedure TPasCubeScreen.BeforeDestroySwapChain;
 begin
  FreeAndNil(fVulkanRenderPass);
  FreeAndNil(fVulkanGraphicsPipeline);
+ FreeAndNil(fSkyGraphicsPipeline);
  inherited BeforeDestroySwapChain;
 end;
 
@@ -721,15 +841,20 @@ begin
                                     pvApplication.VulkanSwapChain.Width,
                                     pvApplication.VulkanSwapChain.Height);
 
-  fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].CmdBindVertexBuffers(0,1,@fVulkanVertexBuffer.Handle,@Offsets);
-  fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].CmdBindIndexBuffer(fVulkanIndexBuffer.Handle,0,VK_INDEX_TYPE_UINT32);
+   // Draw sky first (fullscreen triangle, no depth)
+   fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].CmdBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS,fSkyGraphicsPipeline.Handle);
+   fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].CmdBindVertexBuffers(0,1,@fSkyVertexBuffer.Handle,@Offsets);
+   fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].CmdDraw(3,1,0,0);
 
-  // Steel material only
-  PushConstants.Vector:=TpvVector4.Create(0.8, 0.8, 0.9, 1.0);
-  PushConstants.Params:=TpvVector4.Create(0.9, 0.9, 64.0, 0.0);
+   fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].CmdBindVertexBuffers(0,1,@fVulkanVertexBuffer.Handle,@Offsets);
+   fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].CmdBindIndexBuffer(fVulkanIndexBuffer.Handle,0,VK_INDEX_TYPE_UINT32);
 
-  // Bind Standard Pipeline
-  fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].CmdBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS,fVulkanGraphicsPipeline.Handle);
+   // Steel material only
+   PushConstants.Vector:=TpvVector4.Create(0.8, 0.8, 0.9, 1.0);
+   PushConstants.Params:=TpvVector4.Create(0.9, 0.9, 64.0, 0.0);
+
+   // Bind Standard Pipeline
+   fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].CmdBindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS,fVulkanGraphicsPipeline.Handle);
 
   fVulkanRenderCommandBuffers[pvApplication.DrawInFlightFrameIndex,aSwapChainImageIndex].CmdPushConstants(fVulkanPipelineLayout.Handle,
                                                                                                         TVkShaderStageFlags(VK_SHADER_STAGE_FRAGMENT_BIT),
